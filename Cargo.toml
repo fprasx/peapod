@@ -1,0 +1,15 @@
+[package]
+name = "phenotype"
+version = "0.1.0"
+authors = ["Felix Prasanna"]
+edition = "2021"
+
+[dependencies]
+phenotype-internal = { version = "0.1.0", path = "phenotype-internal"}
+phenotype-macro = { version = "0.1.0", path = "phenotype-macro"}
+
+[workspace]
+members = [
+    "phenotype-macro",
+    "phenotype-internal",
+]
