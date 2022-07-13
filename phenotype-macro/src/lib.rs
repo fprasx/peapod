@@ -1,12 +1,18 @@
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
-use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use quote::{format_ident, quote};
+use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed};
 
 #[proc_macro_derive(phenotype)]
 #[proc_macro_error]
 pub fn phenotype(input: TokenStream) -> TokenStream {
+    const U8_MAX: usize = ::std::u8::MAX as usize;
+    const U16_MAX: usize = ::std::u16::MAX as usize;
+    const U8_MAX_PLUS_1: usize = ::std::u8::MAX as usize + 1;
+    const U16_MAX_PLUS_1: usize = ::std::u16::MAX as usize + 1;
+    const U32_MAX: usize = ::std::u32::MAX as usize;
     const NOTE: &str = "can only derive phenotype on enums";
+
     let ast = parse_macro_input!(input as DeriveInput);
     let ident = ast.ident.clone();
 
@@ -23,32 +29,88 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
 
     let variants = ast.variants;
 
-    let tags = variants
+    // What type should the discriminant be?
+    let discriminant_ty = match variants.len() {
+        0..=U8_MAX => quote! { u8 },
+        U8_MAX_PLUS_1..=U16_MAX => quote! { u16 },
+        U16_MAX_PLUS_1..=U32_MAX => quote! { u32 },
+        _ => quote! { usize },
+    };
+
+    // Match tags to discriminants
+    let discriminants = variants
         .iter()
         .enumerate()
-        .map(|(tag, variant)| quote! { #ident::#variant => #tag})
+        // The cast is ok as the match discriminant_ty's init mean sit can hold enough variants
+        .map(|(tag, variant)| quote! { #ident::#variant => #tag as #discriminant_ty,})
         .collect::<Vec<_>>();
 
-    let lookup = quote! {
-        match tag {
-            #(#tags)*
+    // Make the union that holds the data
+    let union_ident = format_ident!("__{}Data", ident);
+    let mut union_fields = ::std::vec::Vec::new();
+    let mut struct_defs = ::std::vec::Vec::new();
+    for var in variants.iter() {
+        let field = &var.ident;
+        let enum_field_data = match var.fields.clone() {
+            // Create a dummy struct that contains the named fields
+            syn::Fields::Named(FieldsNamed { named, .. }) => {
+                let sname = format_ident!("__{}{}Data", ident, field);
+                let idents = named.iter().map(|field| field.ident.as_ref().unwrap());
+                let types = named.iter().map(|field| &field.ty);
+                struct_defs.push(quote! {
+                    struct #sname {
+                        #(#idents: #types),*
+                    }
+                });
+                quote! { ::std::mem::ManuallyDrop<#sname> }
+            }
+
+            // Create a dummy tuple struct that contains the fields
+            syn::Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
+                let sname = format_ident!("__{}{}Data", ident, field);
+                let types = unnamed.iter().map(|field| &field.ty);
+                struct_defs.push(quote! { struct #sname(#(#types),*); });
+                quote! { ::std::mem::ManuallyDrop<#sname> }
+            }
+
+            // No fields so we don't need to do anything
+            syn::Fields::Unit => quote! { () }, // TODO: this might not be right
+        };
+
+        // Add a struct field to the union
+        union_fields.push(quote! {
+            #field: #enum_field_data
+        })
+    }
+
+    let value = quote! {
+        #(#struct_defs)*
+        #[allow(non_snake_case)]
+        union #union_ident {
+            #(#union_fields),*
         }
     };
 
-
-    quote! {
-        
-        union Fields { test: usize, test2: usize };
+    let x = quote! {
+        #value
         impl phenotype_internal::Phenotype for #ident {
-            type Value = Fields;
-            pub fn discriminant(&self) -> usize {
-                #lookup
+            type Value = #union_ident;
+            type Discriminant = #discriminant_ty;
+            fn discriminant(&self) -> Self::Discriminant {
+                match &self {
+                    #(#discriminants)*
+                }
             }
 
-            pub fn value(self) -> Option<Value> {
+            fn value(self) -> Option<Self::Value> {
                 None
             }
+
+            fn invert_discriminant(tag: Self::Discriminant, value: Self::Value) -> #ident {
+                todo!()
+            }
         }
-    }
-    .into()
+    };
+    println!("{x}");
+    x.into()
 }
