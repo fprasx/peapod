@@ -20,6 +20,7 @@ version = "0.1.0"
 dependencies = [
  "phenotype-internal",
  "proc-macro-error",
+ "proc-macro2",
  "quote",
  "syn",
 ]
