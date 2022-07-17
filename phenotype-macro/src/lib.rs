@@ -30,15 +30,6 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
 
     let variants = ast.variants;
 
-    // Which integer type should the discriminant be?
-    // Select the smallest type that can hold all variants
-    let discriminant_ty = match variants.len() {
-        0..=U8_MAX => quote! { u8 },
-        U8_MAX_PLUS_1..=U16_MAX => quote! { u16 },
-        U16_MAX_PLUS_1..=U32_MAX => quote! { u32 },
-        _ => quote! { usize },
-    };
-
     // Store the tags as keys and the variants as values
     let mut map = HashMap::new();
     map.reserve(variants.len());
@@ -46,61 +37,34 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     for (tag, variant) in variants.into_iter().enumerate() {
         map.insert(tag, variant);
     }
-
-    // Zip tags together with discriminants
-    // Each quote! looks something like `ident::variant => 4u8,`
-    let as_tags = map
-        .iter()
-        // Cast is safe as `discriminant_ty` is init'd to be big enough
-        .map(|(tag, variant)| quote! { #ident::#variant => #tag as #discriminant_ty,});
-
     // Define the union that holds the data
     let union_ident = format_ident!("__{}Data", ident);
-    let mut union_fields = Vec::new();
-    let mut struct_defs = Vec::new();
-    for key in map.keys() {
-        let variant = map.get(key).unwrap();
 
-        let field = variant.ident.clone();
+    // I really love iterators this much
+    // Zip together the auxiliary structs with their respective fields idents
+    let ((struct_idents, struct_defs), field_idents): ((Vec<_>, Vec<_>), Vec<_>) = map
+        .iter()
+        .map(|(_, variant)| def_auxiliary_struct(variant, &ident))
+        .filter_map(|aux| aux.map(|aux| (aux.ident, aux.tokens)))
+        .zip(map.iter().map(|(_, v)| v.ident.clone()))
+        .unzip();
 
-        match def_auxiliary_struct(variant, &ident) {
-            Some(Auxiliary { ident, tokens }) => {
-                // We're going to need this later
-                struct_defs.push(tokens);
-
-                // Add a struct field to the union
-                union_fields.push(quote! {
-                    #field: ::std::mem::ManuallyDrop<#ident>
-                })
-            }
-            None => {
-                // Add a struct field to the union
-                union_fields.push(quote! {
-                    #field: () // TODO: this might not be the right thing to represent "no data"
-                })
-            }
-        }
-    }
-
-    let value = quote! {
-        #(struct #struct_defs)*
+    // Helper structs and the union
+    let auxiliaries = quote! {
+        #(#struct_defs)*
         #[allow(non_snake_case)]
         union #union_ident {
-            #(#union_fields),*
+            #(#field_idents: ::std::mem::ManuallyDrop<#struct_idents>),*
         }
     };
 
+    let discriminant_impl = discriminant_impl(&map, &ident);
     quote! {
-        #value
+        #auxiliaries
         impl phenotype_internal::Phenotype for #ident {
-            type Value = #union_ident;
-            type Discriminant = #discriminant_ty;
-            fn discriminant(&self) -> Self::Discriminant {
-                match &self {
-                    #(#as_tags)*
-                }
-            }
+            #discriminant_impl
 
+            type Value = #union_ident;
             fn value(self) -> Option<Self::Value> {
                 None
             }
@@ -109,15 +73,46 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
                 todo!()
             }
         }
-    }.into()
+    }
+    .into()
 }
 
+/// Code for `Self::Discriminant` and `phenotype::discriminant`
+fn discriminant_impl(map: &HashMap<usize, Variant>, enum_name: &Ident) -> proc_macro2::TokenStream {
+    // Which integer type should the discriminant be?
+    // Select the smallest type that can hold all variants
+    let discriminant_ty = match map.len() {
+        0..=U8_MAX => quote! { u8 },
+        U8_MAX_PLUS_1..=U16_MAX => quote! { u16 },
+        U16_MAX_PLUS_1..=U32_MAX => quote! { u32 },
+        _ => quote! { usize },
+    };
+
+    // Zip tags together with discriminants
+    // Each quote! looks something like `ident::variant => 4u8,`
+    let as_tags = map
+        .iter()
+        // Cast is safe as `discriminant_ty` is init'd to be big enough
+        .map(|(tag, variant)| quote! { #enum_name::#variant => #tag as #discriminant_ty,});
+
+    quote! {
+        type Discriminant = #discriminant_ty;
+        fn discriminant(&self) -> Self::Discriminant {
+            match &self {
+                #(#as_tags)*
+            }
+        }
+    }
+}
+
+/// A struct that represents the data found in an enum
 struct Auxiliary {
     ident: Ident,
     tokens: proc_macro2::TokenStream,
 }
 
-/// Return an auxilliary struct that can hold the data from an enum variant.
+// TODO: put this in the Auxiliary namespace
+/// Return an auxiliary struct that can hold the data from an enum variant.
 /// Returns `None` if the variant doesn't contain any data
 fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliary> {
     let field = &variant.ident;
@@ -130,7 +125,7 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
             Some(Auxiliary {
                 ident: struct_name.clone(),
                 tokens: quote! {
-                    #struct_name {
+                    struct #struct_name {
                         #(#idents: #types),*
                     }
                 },
@@ -143,11 +138,11 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
             let types = unnamed.iter().map(|field| &field.ty);
             Some(Auxiliary {
                 ident: struct_name.clone(),
-                tokens: quote! { #struct_name(#(#types),*); },
+                tokens: quote! { struct #struct_name(#(#types),*); },
             })
         }
 
         // No fields so we don't need to do anything
-        syn::Fields::Unit => None, 
+        syn::Fields::Unit => None,
     }
 }
