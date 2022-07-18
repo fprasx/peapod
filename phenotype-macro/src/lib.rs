@@ -6,10 +6,12 @@ use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Ident, Var
 
 const NOTE: &str = "can only derive phenotype on enums";
 
+type Tag = usize;
+
 /// Condensed derive input; just the stuff we need
 struct Condensed {
     ident: Ident,
-    variants: HashMap<usize, Variant>,
+    variants: HashMap<Tag, Variant>,
 }
 
 #[proc_macro_derive(phenotype)]
@@ -35,7 +37,7 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
             .variants
             .into_iter()
             .enumerate()
-            .collect::<HashMap<usize, Variant>>(),
+            .collect::<HashMap<Tag, Variant>>(),
         ident: ident.clone(),
     };
 
@@ -44,6 +46,7 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     let auxiliaries = make_auxiliaries(&data);
 
     let value_impl = value_impl(&data);
+
     quote! {
         #auxiliaries
         impl phenotype_internal::Phenotype for #ident {
@@ -58,19 +61,24 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Implement the `value` trait method
 fn value_impl(data: &Condensed) -> proc_macro2::TokenStream {
     let ident = &data.ident;
     let union_ident = format_ident!("__{ident}Data");
-    let mut quotes: Vec<proc_macro2::TokenStream> = vec![];
-    quotes.reserve(data.variants.len());
-    for var in data.variants.values() {
+
+    // Snippet to extract data out of each field
+    let mut extractors: Vec<proc_macro2::TokenStream> = vec![];
+    extractors.reserve(data.variants.len());
+
+    for (tag, var) in &data.variants {
         let var_ident = &var.ident;
         let struct_name = format_ident!("__{ident}{var_ident}Data");
-        quotes.push(match &var.fields {
+        extractors.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
+                // Capture each enum field (named), use it's ident to capture it's value
                 let fields = named.iter().map(|f| f.ident.clone()).collect::<Vec<_>>();
                 quote! {
-                    #ident::#var_ident {#(#fields),*} => (self.discriminant(), ::std::option::Option::Some(
+                    #ident::#var_ident {#(#fields),*} => (#tag, ::std::option::Option::Some(
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(#struct_name {
                                 #(#fields),*
@@ -80,12 +88,12 @@ fn value_impl(data: &Condensed) -> proc_macro2::TokenStream {
                 }
             }
             syn::Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
-                // For each field, produce an ident like _0, _1, ... so we can capture the value
+                // For each field (unnamed), produce an ident like _0, _1, ... so we can capture the value
                 let fields = (0..unnamed.iter().len())
                     .map(|i| format_ident!("_{i}"))
                     .collect::<Vec<_>>();
                 quote! {
-                    #ident::#var_ident(#(#fields),*) => (self.discriminant(), ::std::option::Option::Some(
+                    #ident::#var_ident(#(#fields),*) => (#tag, ::std::option::Option::Some(
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(
                                 #struct_name(#(#fields),*)
@@ -95,7 +103,7 @@ fn value_impl(data: &Condensed) -> proc_macro2::TokenStream {
                 }
             }
             syn::Fields::Unit => quote! {
-                #ident::#var_ident => (self.discriminant(), ::std::option::Option::None) // Doesn't contain data
+                #ident::#var_ident => (#tag, ::std::option::Option::None) // Doesn't contain data
             },
         })
     }
@@ -103,17 +111,17 @@ fn value_impl(data: &Condensed) -> proc_macro2::TokenStream {
         type Value = #union_ident;
         fn value(self) -> (usize, ::std::option::Option<Self::Value>) {
             match self {
-                #(#quotes),*
+                #(#extractors),*
             }
         }
     }
 }
 
-// TODO: inline `discriminant` maybe?
-/// Code for `Self::Discriminant` and `phenotype::discriminant`
+/// Code for the discriminant trait method
 fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
     let enum_name = &data.ident;
-    // Zip tags together with discriminants
+
+    // Zip variants together with discriminants
     // Each quote! looks something like `ident::variant => number,`
     let as_tags = data.variants.iter().map(|(tag, variant)| {
         let var_ident = &variant.ident;
@@ -140,6 +148,7 @@ fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
 /// A struct that represents the data found in an enum
 struct Auxiliary {
     ident: Ident,
+    // Tokens for the actual code of the struct
     tokens: proc_macro2::TokenStream,
 }
 
@@ -148,10 +157,16 @@ struct Auxiliary {
 /// Returns `None` if the variant doesn't contain any data
 fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliary> {
     let field = &variant.ident;
+
+    let struct_name = format_ident!("__{}{}Data", enum_name, field);
+
     match &variant.fields {
         // Create a dummy struct that contains the named fields
+        // We need the field idents and types so we can make pairs like:
+        // ident1: type1
+        // ident2: type2
+        // ...
         syn::Fields::Named(FieldsNamed { named, .. }) => {
-            let struct_name = format_ident!("__{}{}Data", enum_name, field);
             let idents = named.iter().map(|field| field.ident.as_ref().unwrap());
             let types = named.iter().map(|field| &field.ty);
             Some(Auxiliary {
@@ -165,8 +180,9 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
         }
 
         // Create a dummy tuple struct that contains the fields
+        // We only need the types so we can produce output like
+        // type1, type2, ...
         syn::Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
-            let struct_name = format_ident!("__{}{}Data", enum_name, field);
             let types = unnamed.iter().map(|field| &field.ty);
             Some(Auxiliary {
                 ident: struct_name.clone(),
@@ -179,6 +195,7 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
     }
 }
 
+/// Define all auxiliary structs and the data enum
 fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
     // Define the union that holds the data
     let union_ident = format_ident!("__{}Data", data.ident);
@@ -197,7 +214,6 @@ fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
         }))
         .unzip();
 
-    // Helper structs and the union
     quote! {
         #(#struct_defs)*
         #[allow(non_snake_case)]
