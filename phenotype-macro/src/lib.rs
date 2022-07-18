@@ -4,11 +4,6 @@ use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Ident, Variant};
 
-const U8_MAX: usize = u8::MAX as usize;
-const U16_MAX: usize = u16::MAX as usize;
-const U8_MAX_PLUS_1: usize = u8::MAX as usize + 1;
-const U16_MAX_PLUS_1: usize = u16::MAX as usize + 1;
-const U32_MAX: usize = u32::MAX as usize;
 const NOTE: &str = "can only derive phenotype on enums";
 
 #[proc_macro_derive(phenotype)]
@@ -69,7 +64,7 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
                 None
             }
 
-            fn invert_discriminant(tag: Self::Discriminant, value: Self::Value) -> #ident {
+            fn invert_discriminant(tag: usize, value: Self::Value) -> #ident {
                 todo!()
             }
         }
@@ -77,27 +72,21 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     .into()
 }
 
+// TODO: inline maybe?
 /// Code for `Self::Discriminant` and `phenotype::discriminant`
 fn discriminant_impl(map: &HashMap<usize, Variant>, enum_name: &Ident) -> proc_macro2::TokenStream {
-    // Which integer type should the discriminant be?
-    // Select the smallest type that can hold all variants
-    let discriminant_ty = match map.len() {
-        0..=U8_MAX => quote! { u8 },
-        U8_MAX_PLUS_1..=U16_MAX => quote! { u16 },
-        U16_MAX_PLUS_1..=U32_MAX => quote! { u32 },
-        _ => quote! { usize },
-    };
-
     // Zip tags together with discriminants
     // Each quote! looks something like `ident::variant => 4u8,`
     let as_tags = map
         .iter()
         // Cast is safe as `discriminant_ty` is init'd to be big enough
-        .map(|(tag, variant)| quote! { #enum_name::#variant => #tag as #discriminant_ty,});
+        .map(|(tag, variant)| quote! { #enum_name::#variant => #tag,});
+
+    let num = as_tags.len();
 
     quote! {
-        type Discriminant = #discriminant_ty;
-        fn discriminant(&self) -> Self::Discriminant {
+        const NUM_VARIANTS: usize = #num;
+        fn discriminant(&self) -> usize {
             match &self {
                 #(#as_tags)*
             }
