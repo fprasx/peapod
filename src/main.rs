@@ -6,7 +6,7 @@ fn main() {
     println!("{disc}");
     let disc = Test::A(1, 1).discriminant();
     println!("{disc}");
-    let disc = Test::B {f: 1.0, u: 1}.discriminant();
+    let disc = Test::B { f: 1.0, u: 1 }.discriminant();
     println!("{disc}");
 }
 

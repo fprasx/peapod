@@ -6,10 +6,17 @@ use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Ident, Var
 
 const NOTE: &str = "can only derive phenotype on enums";
 
+/// Condensed derive input; just the stuff we need
+struct Condensed {
+    ident: Ident,
+    variants: HashMap<usize, Variant>,
+}
+
 #[proc_macro_derive(phenotype)]
 #[proc_macro_error]
 pub fn phenotype(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
+
     let ident = ast.ident.clone();
 
     // Verify we have an enum
@@ -23,37 +30,20 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
         }
     };
 
-    let variants = ast.variants;
-
-    // Store the tags as keys and the variants as values
-    let mut map = HashMap::new();
-    map.reserve(variants.len());
-
-    for (tag, variant) in variants.into_iter().enumerate() {
-        map.insert(tag, variant);
-    }
-    // Define the union that holds the data
-    let union_ident = format_ident!("__{}Data", ident);
-
-    // I really love iterators this much
-    // Zip together the auxiliary structs with their respective fields idents
-    let ((struct_idents, struct_defs), field_idents): ((Vec<_>, Vec<_>), Vec<_>) = map
-        .iter()
-        .map(|(_, variant)| def_auxiliary_struct(variant, &ident))
-        .filter_map(|aux| aux.map(|aux| (aux.ident, aux.tokens)))
-        .zip(map.iter().map(|(_, v)| v.ident.clone()))
-        .unzip();
-
-    // Helper structs and the union
-    let auxiliaries = quote! {
-        #(#struct_defs)*
-        #[allow(non_snake_case)]
-        union #union_ident {
-            #(#field_idents: ::std::mem::ManuallyDrop<#struct_idents>),*
-        }
+    let data = Condensed {
+        variants: ast
+            .variants
+            .into_iter()
+            .enumerate()
+            .collect::<HashMap<usize, Variant>>(),
+        ident: ident.clone(),
     };
 
-    let discriminant_impl = discriminant_impl(&map, &ident);
+    let discriminant_impl = discriminant_impl(&data);
+
+    let auxiliaries = make_auxiliaries(&data);
+
+    let union_ident = format_ident!("__{}Data", ident);
     quote! {
         #auxiliaries
         impl phenotype_internal::Phenotype for #ident {
@@ -72,12 +62,14 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     .into()
 }
 
-// TODO: inline maybe?
+// TODO: inline `discriminant` maybe?
 /// Code for `Self::Discriminant` and `phenotype::discriminant`
-fn discriminant_impl(map: &HashMap<usize, Variant>, enum_name: &Ident) -> proc_macro2::TokenStream {
+fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
+    let enum_name = &data.ident;
     // Zip tags together with discriminants
     // Each quote! looks something like `ident::variant => 4u8,`
-    let as_tags = map
+    let as_tags = data
+        .variants
         .iter()
         // Cast is safe as `discriminant_ty` is init'd to be big enough
         .map(|(tag, variant)| quote! { #enum_name::#variant => #tag,});
@@ -133,5 +125,29 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
 
         // No fields so we don't need to do anything
         syn::Fields::Unit => None,
+    }
+}
+
+fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
+    // Define the union that holds the data
+    let union_ident = format_ident!("__{}Data", data.ident);
+
+    // I really love iterators this much
+    // Zip together the auxiliary structs with their respective fields idents
+    let ((struct_idents, struct_defs), field_idents): ((Vec<_>, Vec<_>), Vec<_>) = data
+        .variants
+        .iter()
+        .map(|(_, variant)| def_auxiliary_struct(variant, &data.ident))
+        .filter_map(|aux| aux.map(|aux| (aux.ident, aux.tokens)))
+        .zip(data.variants.iter().map(|(_, v)| v.ident.clone()))
+        .unzip();
+
+    // Helper structs and the union
+    quote! {
+        #(#struct_defs)*
+        #[allow(non_snake_case)]
+        union #union_ident {
+            #(#field_idents: ::std::mem::ManuallyDrop<#struct_idents>),*
+        }
     }
 }
