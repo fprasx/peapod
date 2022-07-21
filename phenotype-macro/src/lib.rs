@@ -45,35 +45,91 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
 
     let auxiliaries = make_auxiliaries(&data);
 
-    let value_impl = value_impl(&data);
+    let cleave_impl = cleave_impl(&data);
+
+    let reknit_impl = reknit_impl(&data);
 
     quote! {
         #auxiliaries
         impl phenotype_internal::Phenotype for #ident {
             #discriminant_impl
 
-            #value_impl
-            fn invert_discriminant(tag: usize, value: Self::Value) -> Self {
-                todo!()
-            }
+            #cleave_impl
+            // fn reknit(tag: usize, value: Self::Value) -> Self {
+            //     todo!()
+            // }
+            #reknit_impl
         }
     }
     .into()
 }
 
+fn reknit_impl(data: &Condensed) -> proc_macro2::TokenStream {
+    let mut arms = vec![];
+    arms.reserve(data.variants.len());
+
+    // let union_ident = format_ident!("__{}Data", data.ident);
+    let ident = &data.ident;
+
+    for (tag, var) in &data.variants {
+        let struct_name = format_ident!("__{}{}Data", data.ident, var.ident);
+        let var_ident = &var.ident;
+        arms.push(
+            match &var.fields {
+                syn::Fields::Named( FieldsNamed { named, .. }) => {
+                    let struct_fields = named.iter().map(|f| f.ident.clone().unwrap()).collect::<Vec<_>>();
+                    quote ! {
+                        #tag => {
+                            // Safe because the tag guarantees that we are reading the correct field
+                            let data = ::std::mem::ManuallyDrop::<#struct_name>::into_inner(unsafe { value.unwrap().#var_ident });
+                            #ident::#var_ident { #(#struct_fields: data.#struct_fields),* }
+                        }
+                    }
+                }
+                syn::Fields::Unnamed( FieldsUnnamed { unnamed , ..}) => {
+                    let struct_field_placeholders = (0..unnamed.len()).map(syn::Index::from); 
+                    quote! {
+                        #tag => {
+                            // Safe because the tag guarantees that we are reading the correct field
+                            let data = ::std::mem::ManuallyDrop::<#struct_name>::into_inner(unsafe { value.unwrap().#var_ident });
+                            #ident::#var_ident ( #(data.#struct_field_placeholders),* )
+                        }
+                    }
+                }
+                syn::Fields::Unit => {
+
+                    quote! {
+                        #tag => {
+                            #ident::#var_ident
+                        }
+                    }
+                }
+            }
+        )
+    }
+    quote! {
+        fn reknit(tag: usize, value: ::std::option::Option<Self::Value>) -> #ident {
+            match tag {
+                #(#arms),*
+                _ => ::std::unreachable!()
+            }
+        }
+    }
+}
+
 /// Implement the `value` trait method
-fn value_impl(data: &Condensed) -> proc_macro2::TokenStream {
+fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     let ident = &data.ident;
     let union_ident = format_ident!("__{ident}Data");
 
     // Snippet to extract data out of each field
-    let mut extractors: Vec<proc_macro2::TokenStream> = vec![];
-    extractors.reserve(data.variants.len());
+    let mut arms: Vec<proc_macro2::TokenStream> = vec![];
+    arms.reserve(data.variants.len());
 
     for (tag, var) in &data.variants {
         let var_ident = &var.ident;
         let struct_name = format_ident!("__{ident}{var_ident}Data");
-        extractors.push(match &var.fields {
+        arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 // Capture each enum field (named), use it's ident to capture it's value
                 let fields = named.iter().map(|f| f.ident.clone()).collect::<Vec<_>>();
@@ -109,9 +165,9 @@ fn value_impl(data: &Condensed) -> proc_macro2::TokenStream {
     }
     quote! {
         type Value = #union_ident;
-        fn value(self) -> (usize, ::std::option::Option<Self::Value>) {
+        fn cleave(self) -> (usize, ::std::option::Option<Self::Value>) {
             match self {
-                #(#extractors),*
+                #(#arms),*
             }
         }
     }
@@ -123,7 +179,7 @@ fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
 
     // Zip variants together with discriminants
     // Each quote! looks something like `ident::variant => number,`
-    let as_tags = data.variants.iter().map(|(tag, variant)| {
+    let arms = data.variants.iter().map(|(tag, variant)| {
         let var_ident = &variant.ident;
         // Make sure we have the proper destructuring syntax
         match variant.fields {
@@ -133,13 +189,13 @@ fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
         }
     });
 
-    let num = as_tags.len();
+    let num = arms.len();
 
     quote! {
         const NUM_VARIANTS: usize = #num;
         fn discriminant(&self) -> usize {
             match &self {
-                #(#as_tags)*
+                #(#arms)*
             }
         }
     }
@@ -200,19 +256,14 @@ fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
     // Define the union that holds the data
     let union_ident = format_ident!("__{}Data", data.ident);
 
-    // I really love iterators this much
-    // Zip together the auxiliary structs with their respective fields idents
-    let ((struct_idents, struct_defs), field_idents): ((Vec<_>, Vec<_>), Vec<_>) = data
-        .variants
-        .iter()
-        .map(|(_, variant)| def_auxiliary_struct(variant, &data.ident))
-        .filter_map(|aux| aux.map(|aux| (aux.ident, aux.tokens)))
-        .zip(data.variants.iter().filter_map(|(_, v)| match v.fields {
-            syn::Fields::Unit => None,
-            // Only need the ident if it has fields, as we only store data if there are fields
-            _ => Some(v.ident.clone()),
-        }))
-        .unzip();
+    let (mut struct_idents, mut struct_defs, mut field_idents) = (vec![], vec![], vec![]);
+    for var in data.variants.values() {
+        if let Some(aux) = def_auxiliary_struct(var, &data.ident) {
+            struct_idents.push(aux.ident);
+            struct_defs.push(aux.tokens);
+            field_idents.push(var.ident.clone())
+        }
+    }
 
     quote! {
         #(#struct_defs)*
