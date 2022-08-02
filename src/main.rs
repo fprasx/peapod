@@ -1,33 +1,29 @@
+use phenotype::Peapod;
 use phenotype_internal::Phenotype;
 use phenotype_macro::phenotype;
+
 fn main() {
-    let a = Test::A(
-        1,
-        Data {
-            _u: 2,
-            _r: 3,
-            _f: 4,
-        },
-        5,
+    let mut pp = Peapod::new();
+    pp.push(Test::A(1, 5));
+    pp.push(Test::B { f: 1.0, u: (1, 1) });
+    pp.push(Test::C);
+    println!(
+        "Size of normal vector: {}",
+        pp.len() * std::mem::size_of::<Test>()
     );
-    let (tag, data) = a.cleave();
-    let reknitted = <Test as Phenotype>::reknit(tag, data);
-    println!("{reknitted:?}");
-
-    let b = Test::B { f: 1.0, u: (1, 1) };
-    let (tag, data) = b.cleave();
-    let reknitted = <Test as Phenotype>::reknit(tag, data);
-    println!("{reknitted:?}");
-
-    let b = Test::C;
-    let (tag, data) = b.cleave();
-    let reknitted = <Test as Phenotype>::reknit(tag, data);
-    println!("{reknitted:?}");
+    println!(
+        "Size of peapod: {}",
+        pp.len() + pp.len() * std::mem::size_of::<<Test as Phenotype>::Value>()
+    );
+    println!("Popped off {:?}", pp.pop());
+    println!("Popped off {:?}", pp.pop());
+    println!("Popped off {:?}", pp.pop());
+    println!("All the edamame has been removed");
 }
 
 #[derive(phenotype, Debug)]
 enum Test {
-    A(usize, Data, u32),
+    A(usize, u32),
     B { f: f64, u: (u32, u32) },
     C,
 }

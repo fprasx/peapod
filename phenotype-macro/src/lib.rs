@@ -41,6 +41,10 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
         ident: ident.clone(),
     };
 
+    if data.variants.is_empty() {
+        abort!(data.ident, "enum `{}` has no variants", data.ident)
+    }
+
     let discriminant_impl = discriminant_impl(&data);
 
     let auxiliaries = make_auxiliaries(&data);

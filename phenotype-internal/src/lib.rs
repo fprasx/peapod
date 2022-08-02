@@ -1,4 +1,5 @@
-// TODO: write macro that convert enum to union
+// TODO: write auto-method that tells size of new type
+// tag + union
 pub trait Phenotype {
     const NUM_VARIANTS: usize;
     type Value;
