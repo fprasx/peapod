@@ -1,36 +1,19 @@
 use phenotype::Peapod;
 use phenotype_internal::Phenotype;
-use phenotype_macro::phenotype;
-
+use phenotype_macro::Phenotype;
+use bitvec::prelude::*;
+use bitvec::view::BitView;
 fn main() {
-    let mut pp = Peapod::new();
-    pp.push(Test::A(1, 5));
-    pp.push(Test::B { f: 1.0, u: (1, 1) });
-    pp.push(Test::C);
-    println!(
-        "Size of normal vector: {}",
-        pp.len() * std::mem::size_of::<Test>()
-    );
-    println!(
-        "Size of peapod: {}",
-        pp.len() + pp.len() * std::mem::size_of::<<Test as Phenotype>::Value>()
-    );
-    println!("Popped off {:?}", pp.pop());
-    println!("Popped off {:?}", pp.pop());
-    println!("Popped off {:?}", pp.pop());
-    println!("All the edamame has been removed");
+    // UB!! hehe
+    let mut pp = Peapod::<Test>::new();
+    let (_, data) = Test::U(3).cleave();
+    pp.tags.extend_from_bitslice(BitView::view_bits::<Lsb0>(&[1usize]));
+    pp.data.push(data);
+    println!("{:?}", pp.pop());
 }
 
-#[derive(phenotype, Debug)]
+#[derive(Phenotype, Debug)]
 enum Test {
-    A(usize, u32),
-    B { f: f64, u: (u32, u32) },
-    C,
-}
-
-#[derive(Debug)]
-struct Data {
-    _u: usize,
-    _r: usize,
-    _f: usize,
+    U(usize),
+    B(bool)
 }

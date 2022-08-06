@@ -14,7 +14,7 @@ struct Condensed {
     variants: HashMap<Tag, Variant>,
 }
 
-#[proc_macro_derive(phenotype)]
+#[proc_macro_derive(Phenotype)]
 #[proc_macro_error]
 pub fn phenotype(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -68,6 +68,7 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     .into()
 }
 
+#[rustfmt::skip]
 fn reknit_impl(data: &Condensed) -> proc_macro2::TokenStream {
     let mut arms = vec![];
     arms.reserve(data.variants.len());

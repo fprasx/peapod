@@ -5,12 +5,9 @@ authors = ["Felix Prasanna"]
 edition = "2021"
 
 [dependencies]
-phenotype-internal = { version = "0.1.0", path = "phenotype-internal"}
-phenotype-macro = { version = "0.1.0", path = "phenotype-macro"}
+phenotype-internal = { version = "0.1.0", path = "phenotype-internal" }
+phenotype-macro = { version = "0.1.0", path = "phenotype-macro" }
 bitvec = "1.0.1"
 
 [workspace]
-members = [
-    "phenotype-macro",
-    "phenotype-internal",
-]
+members = ["phenotype-macro", "phenotype-internal"]
