@@ -2,20 +2,20 @@
 #![feature(int_log)]
 #![feature(test)]
 
+use std::fmt::Debug;
+
 use bitvec::prelude::*;
 use phenotype_internal::Phenotype;
 
 pub struct Peapod<T: Phenotype> {
-    // TODO; remove pubs
-    pub tags: BitVec,
-    pub data: Vec<Option<T::Value>>,
+    tags: BitVec,
+    data: Vec<Option<T::Value>>,
 }
 
 impl<T> Peapod<T>
 where
     T: Phenotype,
 {
-    // TODO: stick this in proc macro, use floats to compute it
     const BITS: usize = {
         let log = usize::log2(T::NUM_VARIANTS);
         let pow = 2usize.pow(log);
@@ -38,20 +38,25 @@ where
     }
 
     pub fn push(&mut self, t: T) {
-        let (tag, data) = t.cleave();
         let pos = self.data.len();
+
+        let (tag, data) = t.cleave();
+
         self.data.push(data);
-        // Naively pushing seems to be faster
+
+        // Naively pushing seems to be faster than something like
         // self.tags
         //     .extend_from_bitslice(&BitView::view_bits::<Lsb0>(&[tag])[0..Self::BITS]);
         for _ in 0..Self::BITS {
             self.tags.push(false)
         }
+
         self.set_tag(pos, tag);
     }
 
     pub fn pop(&mut self) -> Option<T> {
         let len = self.data.len();
+
         if len == 0 {
             return None;
         }
@@ -59,10 +64,11 @@ where
         // This is safe as we checked that the length is not 0
         let data = self.data.pop().unwrap();
 
-        // Subtract one as pos is the length of the vector before removing an element
+        // Subtract one as len is the length of the vector before removing an element
         // The subtraction will not underflow as pos is guaranteed != 0
         let tag: usize = self.get_tag(len - 1);
 
+        // Remove the last tag
         for _ in 0..Self::BITS {
             self.tags.pop();
         }
@@ -89,16 +95,21 @@ where
     }
 }
 
+impl<T> Drop for Peapod<T>
+where
+    T: Phenotype,
+{
+    fn drop(&mut self) {
+        while self.pop().is_some() {}
+    }
+}
+
 impl<T> From<Peapod<T>> for Vec<T>
 where
     T: Phenotype,
 {
     fn from(pp: Peapod<T>) -> Self {
-        pp.tags
-            .chunks(Peapod::<T>::BITS)
-            .zip(pp.data)
-            .map(|(tag, val)| Phenotype::reknit(tag[0..Peapod::<T>::BITS].load(), val))
-            .collect()
+        pp.into_iter().collect()
     }
 }
 
@@ -117,7 +128,6 @@ where
     }
 }
 
-// TODO: impl common traits: Debug, Iter, IntoIter, sliceindex, etc.
 impl<T> Default for Peapod<T>
 where
     T: Phenotype,
@@ -135,6 +145,22 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.pop()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(self.data.len()))
+    }
+}
+
+impl<T> Debug for Peapod<T>
+where
+    T: Phenotype,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Peapod")
+            .field("tags", &[..])
+            .field("data", &[..])
+            .finish()
     }
 }
 
