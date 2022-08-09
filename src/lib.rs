@@ -2,7 +2,7 @@
 #![feature(int_log)]
 #![feature(test)]
 
-use std::{fmt::Debug, ptr};
+use std::{fmt::Debug, ptr, mem::ManuallyDrop};
 
 use bitvec::prelude::*;
 use phenotype_internal::Phenotype;
@@ -148,9 +148,9 @@ where
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let tags = unsafe { ptr::read(&self.tags) };
-        let data = unsafe { ptr::read(&self.data) };
-        std::mem::forget(self);
+        let pp = ManuallyDrop::new(self);
+        let tags = unsafe { ptr::read(&pp.tags) };
+        let data = unsafe { ptr::read(&pp.data) };
         IntoIter {
             tags, data, index: 0
         }
