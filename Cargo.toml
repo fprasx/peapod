@@ -1,5 +1,5 @@
 [package]
-name = "phenotype"
+name = "peapod"
 version = "0.1.0"
 authors = ["Felix Prasanna"]
 edition = "2021"

@@ -1,11 +1,9 @@
 // TODO: tests!
-#![feature(int_log)]
 #![feature(test)]
-
 use std::{fmt::Debug, ptr, mem::ManuallyDrop};
-
 use bitvec::prelude::*;
-use phenotype_internal::Phenotype;
+
+pub use phenotype_internal::Phenotype;
 
 pub struct Peapod<T: Phenotype> {
     tags: BitVec,
@@ -16,12 +14,6 @@ impl<T> Peapod<T>
 where
     T: Phenotype,
 {
-    const BITS: usize = {
-        let log = usize::log2(T::NUM_VARIANTS);
-        let pow = 2usize.pow(log);
-        (if pow < T::NUM_VARIANTS { log + 1 } else { log }) as usize
-    };
-
     pub fn new() -> Self {
         Peapod {
             tags: BitVec::new(),
@@ -30,11 +22,11 @@ where
     }
 
     fn get_tag(&self, index: usize) -> usize {
-        self.tags[index * Peapod::<T>::BITS..(index + 1) * Peapod::<T>::BITS].load()
+        self.tags[index * T::BITS..(index + 1) * T::BITS].load()
     }
 
     fn set_tag(&mut self, index: usize, tag: usize) {
-        self.tags[index * Peapod::<T>::BITS..(index + 1) * Peapod::<T>::BITS].store::<usize>(tag);
+        self.tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
     }
 
     pub fn push(&mut self, t: T) {
@@ -123,7 +115,7 @@ where
         let mut tags = BitVec::<usize, Lsb0>::repeat(false, T::BITS * pp.len());
         let mut data = Vec::with_capacity(pp.len());
         for (index, (tag, value)) in pp.into_iter().map(|p| p.cleave()).enumerate() {
-            tags[index * T::BITS..(index + 1) * Self::BITS].store::<usize>(tag);
+            tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
             data.push(value)
         }
         Self { tags, data }

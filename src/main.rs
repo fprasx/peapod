@@ -1,4 +1,4 @@
-use phenotype::Peapod;
+use peapod::Peapod;
 use phenotype_macro::Phenotype;
 
 fn main() {

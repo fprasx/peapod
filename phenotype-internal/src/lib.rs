@@ -9,7 +9,7 @@ pub trait Phenotype {
     /// The number of bits needed to represent every variant of the enum.
     const BITS: usize;
 
-    /// The number bits Phenotypes uses to represent and instance of a type
+    /// The number bits `Phenotype` uses to represent and instance of a type
     const PEAPOD_SIZE: usize;
 
     /// Whether using `Phenotype` produces a more compact representation.
