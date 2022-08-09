@@ -1,5 +1,3 @@
-/*
-
 // TODO: tests!
 #![feature(int_log)]
 #![feature(test)]
@@ -11,7 +9,7 @@ use phenotype_internal::Phenotype;
 
 pub struct Peapod<T: Phenotype> {
     tags: BitVec,
-    data: Vec<Option<T::Value>>,
+    data: Vec<T::Value>,
 }
 
 impl<T> Peapod<T>
@@ -246,5 +244,3 @@ where
 //         pp.clear();
 //     }
 // }
-
- */

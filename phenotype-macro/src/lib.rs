@@ -152,7 +152,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                 // Capture each enum field (named), use it's ident to capture it's value
                 let fields = named.iter().map(|f| f.ident.clone()).collect::<Vec<_>>();
                 quote! {
-                    #ident::#var_ident {#(#fields),*} => (#tag, 
+                    #ident::#var_ident {#(#fields),*} => (#tag,
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(#struct_name {
                                 #(#fields),*
@@ -167,7 +167,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                     .map(|i| format_ident!("_{i}"))
                     .collect::<Vec<_>>();
                 quote! {
-                    #ident::#var_ident(#(#fields),*) => (#tag, 
+                    #ident::#var_ident(#(#fields),*) => (#tag,
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(
                                 #struct_name(#(#fields),*)
@@ -274,7 +274,8 @@ fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
     // Define the union that holds the data
     let union_ident = format_ident!("__{}Data", data.name);
 
-    let (mut struct_idents, mut struct_defs, mut field_idents, mut empty_field_idents)  = (vec![], vec![], vec![], vec![]);
+    let (mut struct_idents, mut struct_defs, mut field_idents, mut empty_field_idents) =
+        (vec![], vec![], vec![], vec![]);
 
     for var in data.variants.values() {
         if let Some(aux) = def_auxiliary_struct(var, &data.name) {
