@@ -1,3 +1,5 @@
+/*
+
 // TODO: tests!
 #![feature(int_log)]
 #![feature(test)]
@@ -47,6 +49,8 @@ where
         // Naively pushing seems to be faster than something like
         // self.tags
         //     .extend_from_bitslice(&BitView::view_bits::<Lsb0>(&[tag])[0..Self::BITS]);
+        // TODO: try bitshifty stuff?
+        // like push((tags >> 1) & 1), push((tags >> 2) & 1), push((tags >> 3) & 1)
         for _ in 0..Self::BITS {
             self.tags.push(false)
         }
@@ -164,81 +168,83 @@ where
     }
 }
 
-#[cfg(test)]
-mod bench {
-    extern crate test;
-    use phenotype_macro::Phenotype;
-    use test::black_box;
-    use test::Bencher;
+// #[cfg(test)]
+// mod bench {
+//     extern crate test;
+//     use phenotype_macro::Phenotype;
+//     use test::black_box;
+//     use test::Bencher;
 
-    use crate::Peapod;
+//     use crate::Peapod;
 
-    #[derive(Phenotype)]
-    enum Test {
-        A(usize, u32),
-        B { f: f64, u: (u32, u32) },
-        C,
-    }
+//     #[derive(Phenotype)]
+//     enum Test {
+//         A(usize, u32),
+//         B { f: f64, u: (u32, u32) },
+//         C,
+//     }
 
-    #[bench]
-    fn normal(b: &mut Bencher) {
-        let mut v = black_box(vec![
-            Test::A(1, 2),
-            Test::B { f: 1.0, u: (1, 2) },
-            Test::C,
-            Test::A(1, 2),
-            Test::C,
-            Test::B { f: 1.0, u: (1, 2) },
-            Test::A(1, 2),
-            Test::C,
-            Test::B { f: 1.0, u: (1, 2) },
-            Test::A(1, 2),
-            Test::C,
-            Test::B { f: 1.0, u: (1, 2) },
-            Test::A(1, 2),
-            Test::B { f: 1.0, u: (1, 2) },
-            Test::C,
-        ]);
-        v.reserve(5);
-        b.iter(|| {
-            v.push(Test::C);
-            v.push(Test::B { f: 1.0, u: (1, 2) });
-            v.push(Test::A(1, 2));
-            v.push(Test::B { f: 1.0, u: (1, 2) });
-            v.push(Test::C);
-        });
-        v.clear();
-    }
+//     #[bench]
+//     fn normal(b: &mut Bencher) {
+//         let mut v = black_box(vec![
+//             Test::A(1, 2),
+//             Test::B { f: 1.0, u: (1, 2) },
+//             Test::C,
+//             Test::A(1, 2),
+//             Test::C,
+//             Test::B { f: 1.0, u: (1, 2) },
+//             Test::A(1, 2),
+//             Test::C,
+//             Test::B { f: 1.0, u: (1, 2) },
+//             Test::A(1, 2),
+//             Test::C,
+//             Test::B { f: 1.0, u: (1, 2) },
+//             Test::A(1, 2),
+//             Test::B { f: 1.0, u: (1, 2) },
+//             Test::C,
+//         ]);
+//         v.reserve(5);
+//         b.iter(|| {
+//             v.push(Test::C);
+//             v.push(Test::B { f: 1.0, u: (1, 2) });
+//             v.push(Test::A(1, 2));
+//             v.push(Test::B { f: 1.0, u: (1, 2) });
+//             v.push(Test::C);
+//         });
+//         v.clear();
+//     }
 
-    #[bench]
-    fn peapod(b: &mut Bencher) {
-        let mut pp = black_box({
-            let mut pp = Peapod::new();
-            pp.push(Test::A(1, 2));
-            pp.push(Test::B { f: 1.0, u: (1, 2) });
-            pp.push(Test::C);
-            pp.push(Test::A(1, 2));
-            pp.push(Test::C);
-            pp.push(Test::B { f: 1.0, u: (1, 2) });
-            pp.push(Test::A(1, 2));
-            pp.push(Test::C);
-            pp.push(Test::B { f: 1.0, u: (1, 2) });
-            pp.push(Test::A(1, 2));
-            pp.push(Test::C);
-            pp.push(Test::B { f: 1.0, u: (1, 2) });
-            pp.push(Test::A(1, 2));
-            pp.push(Test::B { f: 1.0, u: (1, 2) });
-            pp.push(Test::C);
-            pp
-        });
-        pp.reserve(5);
-        b.iter(|| {
-            pp.push(Test::C);
-            pp.push(Test::B { f: 1.0, u: (1, 2) });
-            pp.push(Test::A(1, 2));
-            pp.push(Test::B { f: 1.0, u: (1, 2) });
-            pp.push(Test::C);
-        });
-        pp.clear();
-    }
-}
+//     #[bench]
+//     fn peapod(b: &mut Bencher) {
+//         let mut pp = black_box({
+//             let mut pp = Peapod::new();
+//             pp.push(Test::A(1, 2));
+//             pp.push(Test::B { f: 1.0, u: (1, 2) });
+//             pp.push(Test::C);
+//             pp.push(Test::A(1, 2));
+//             pp.push(Test::C);
+//             pp.push(Test::B { f: 1.0, u: (1, 2) });
+//             pp.push(Test::A(1, 2));
+//             pp.push(Test::C);
+//             pp.push(Test::B { f: 1.0, u: (1, 2) });
+//             pp.push(Test::A(1, 2));
+//             pp.push(Test::C);
+//             pp.push(Test::B { f: 1.0, u: (1, 2) });
+//             pp.push(Test::A(1, 2));
+//             pp.push(Test::B { f: 1.0, u: (1, 2) });
+//             pp.push(Test::C);
+//             pp
+//         });
+//         pp.reserve(5);
+//         b.iter(|| {
+//             pp.push(Test::C);
+//             pp.push(Test::B { f: 1.0, u: (1, 2) });
+//             pp.push(Test::A(1, 2));
+//             pp.push(Test::B { f: 1.0, u: (1, 2) });
+//             pp.push(Test::C);
+//         });
+//         pp.clear();
+//     }
+// }
+
+ */

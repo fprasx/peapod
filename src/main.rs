@@ -1,19 +1,48 @@
-use phenotype::Peapod;
-use phenotype_internal::Phenotype;
 use phenotype_macro::Phenotype;
-use bitvec::prelude::*;
-use bitvec::view::BitView;
+
 fn main() {
-    // UB!! hehe
-    let mut pp = Peapod::<Test>::new();
-    let (_, data) = Test::U(3).cleave();
-    pp.tags.extend_from_bitslice(BitView::view_bits::<Lsb0>(&[1usize]));
-    pp.data.push(data);
-    println!("{:?}", pp.pop());
 }
 
-#[derive(Phenotype, Debug)]
-enum Test {
-    U(usize),
-    B(bool)
+#[derive(Phenotype)]
+enum Test0
+{
+    A,
+    B,
+    C
 }
+#[derive(Phenotype)]
+enum Test1
+{
+    A(),
+    B {},
+    C
+}
+#[derive(Phenotype)]
+enum Test2 {
+    A(Helper),
+    B { helper: Helper}
+}
+
+struct Helper {
+    _a: usize,
+    _b: f64
+}
+
+/*
+
+#[derive(Phenotype)]
+enum Test3 {}
+#[derive(Phenotype)]
+enum Test4 {}
+#[derive(Phenotype)]
+enum Test5 {}
+#[derive(Phenotype)]
+enum Test6 {}
+#[derive(Phenotype)]
+enum Test7 {}
+#[derive(Phenotype)]
+enum Test8 {}
+#[derive(Phenotype)]
+enum Test9 {}
+
+*/
