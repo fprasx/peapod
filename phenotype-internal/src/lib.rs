@@ -6,7 +6,11 @@
 /// This trait represents the behaviour of a tagged union.
 /// **Note**: it should only be implemented with the `derive` macro.
 pub trait Phenotype {
+    /// The number of variants of the enum.
     const NUM_VARIANTS: usize;
+    
+    /// The number of bits needed to represent every variant of the enum.
+    const BITS: usize;
 
     // const PEAPOD_SIZE: usize;
 

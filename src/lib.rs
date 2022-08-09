@@ -2,7 +2,7 @@
 #![feature(int_log)]
 #![feature(test)]
 
-use std::fmt::Debug;
+use std::{fmt::Debug, ptr};
 
 use bitvec::prelude::*;
 use phenotype_internal::Phenotype;
@@ -46,10 +46,10 @@ where
 
         // Naively pushing seems to be faster than something like
         // self.tags
-        //     .extend_from_bitslice(&BitView::view_bits::<Lsb0>(&[tag])[0..Self::BITS]);
+        //     .extend_from_bitslice(&BitView::view_bits::<Lsb0>(&[tag])[0..T::BITS]);
         // TODO: try bitshifty stuff?
         // like push((tags >> 1) & 1), push((tags >> 2) & 1), push((tags >> 3) & 1)
-        for _ in 0..Self::BITS {
+        for _ in 0..T::BITS {
             self.tags.push(false)
         }
 
@@ -71,7 +71,7 @@ where
         let tag: usize = self.get_tag(len - 1);
 
         // Remove the last tag
-        for _ in 0..Self::BITS {
+        for _ in 0..T::BITS {
             self.tags.pop();
         }
 
@@ -88,7 +88,7 @@ where
 
     pub fn reserve(&mut self, elements: usize) {
         self.data.reserve(elements);
-        self.tags.reserve(elements * Self::BITS);
+        self.tags.reserve(elements * T::BITS);
     }
 
     pub fn clear(&mut self) {
@@ -120,10 +120,10 @@ where
     T: Phenotype,
 {
     fn from(pp: Vec<T>) -> Self {
-        let mut tags = BitVec::<usize, Lsb0>::repeat(false, Self::BITS * pp.len());
+        let mut tags = BitVec::<usize, Lsb0>::repeat(false, T::BITS * pp.len());
         let mut data = Vec::with_capacity(pp.len());
         for (index, (tag, value)) in pp.into_iter().map(|p| p.cleave()).enumerate() {
-            tags[index * Self::BITS..(index + 1) * Self::BITS].store::<usize>(tag);
+            tags[index * T::BITS..(index + 1) * Self::BITS].store::<usize>(tag);
             data.push(value)
         }
         Self { tags, data }
@@ -139,18 +139,50 @@ where
     }
 }
 
-impl<T> Iterator for Peapod<T>
+impl<T> IntoIterator for Peapod<T>
+where
+    T: Phenotype,
+{
+    type Item = T;
+
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let tags = unsafe { ptr::read(&self.tags) };
+        let data = unsafe { ptr::read(&self.data) };
+        std::mem::forget(self);
+        IntoIter {
+            tags, data, index: 0
+        }
+    }
+}
+
+pub struct IntoIter<T>
+where
+    T: Phenotype,
+{
+    tags: BitVec,
+    data: Vec<T::Value>,
+    index: usize,
+}
+
+impl<T> Iterator for IntoIter<T>
 where
     T: Phenotype,
 {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.pop()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.data.len()))
+        if self.index == self.data.len() {
+            None
+        } else {
+            let elem = Some(<T as Phenotype>::reknit(
+                self.tags[self.index * T::BITS..(self.index + 1) * T::BITS].load(),
+                unsafe { std::ptr::read(self.data.as_ptr().add(self.index)) },
+            ));
+            self.index += 1;
+            elem
+        }
     }
 }
 

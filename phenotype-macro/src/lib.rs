@@ -3,6 +3,7 @@ use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote, ToTokens};
 use std::collections::HashMap;
 use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Ident, Variant};
+use std::f32;
 
 const NOTE: &str = "can only derive phenotype on enums";
 
@@ -67,11 +68,15 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
 
     let reknit_impl = reknit_impl(&data);
 
+    // We cast as we actually do want to rounding to the nearest int
+    let bits = f32::log2(data.variants.len() as f32) as usize;
+
     quote! {
         #auxiliaries
         impl #impl_generics phenotype_internal::Phenotype for #ident #ty_generics
             #where_clause
         {
+            const BITS: usize = #bits;
             #discriminant_impl
             #cleave_impl
             #reknit_impl
