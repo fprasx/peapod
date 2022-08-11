@@ -1,5 +1,5 @@
 // TODO: if you're feeling really good: generics
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote};
 use std::collections::HashMap;
@@ -18,7 +18,7 @@ struct Condensed {
 
 #[proc_macro_derive(Phenotype)]
 #[proc_macro_error]
-pub fn phenotype(input: TokenStream) -> TokenStream {
+pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
@@ -71,6 +71,8 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     // We cast as we actually do want to rounding to the nearest int
     let bits = f32::log2(data.variants.len() as f32) as usize;
 
+    let num_variants = data.variants.len();
+
     let union_ident = format_ident!("__{}Data", data.name);
 
     quote! {
@@ -78,6 +80,7 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
         impl #impl_generics phenotype_internal::Phenotype for #ident #ty_generics
             #where_clause
         {
+            const NUM_VARIANTS: usize = #num_variants;
             const BITS: usize = #bits;
             const PEAPOD_SIZE: usize = { Self::BITS + ::core::mem::size_of::<#union_ident>() };
             const IS_MORE_COMPACT: bool = Self::PEAPOD_SIZE <= ::core::mem::size_of::<#ident>();
@@ -89,15 +92,16 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     .into()
 }
 
-fn reknit_impl(data: &Condensed) -> proc_macro2::TokenStream {
+fn reknit_impl(data: &Condensed) -> TokenStream {
     let mut arms = Vec::with_capacity(data.variants.len());
 
-    // let union_ident = format_ident!("__{}Data", data.ident);
     let ident = &data.name;
 
+    // We're going to turn each variant into a match that handles that variant's case
     for (tag, var) in &data.variants {
         let struct_name = format_ident!("__{}{}Data", data.name, var.ident);
         let var_ident = &var.ident;
+
         arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 let struct_fields = named
@@ -106,7 +110,7 @@ fn reknit_impl(data: &Condensed) -> proc_macro2::TokenStream {
                     .collect::<Vec<_>>();
                 quote! {
                     #tag => {
-                        // Safe because the tag guarantees that we are reading the correct field
+                        // SAFETY: Safe because the tag guarantees that we are reading the correct field
                         let data = ::std::mem::ManuallyDrop::<#struct_name>::into_inner(
                             unsafe { value.#var_ident }
                         );
@@ -115,10 +119,11 @@ fn reknit_impl(data: &Condensed) -> proc_macro2::TokenStream {
                 }
             }
             syn::Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
+                // This produces the indexes we use to extract the data from the struct
                 let struct_field_placeholders = (0..unnamed.len()).map(syn::Index::from);
                 quote! {
                     #tag => {
-                        // Safe because the tag guarantees that we are reading the correct field
+                        // SAFETY: Safe because the tag guarantees that we are reading the correct field
                         let data = ::std::mem::ManuallyDrop::<#struct_name>::into_inner(
                             unsafe { value.#var_ident }
                         );
@@ -139,6 +144,7 @@ fn reknit_impl(data: &Condensed) -> proc_macro2::TokenStream {
         fn reknit(tag: usize, value: Self::Value) -> #ident {
             match tag {
                 #(#arms),*
+                // There should be no other cases, as therea are no other variants
                 _ => ::std::unreachable!()
             }
         }
@@ -153,9 +159,11 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     // Snippet to extract data out of each field
     let mut arms: Vec<proc_macro2::TokenStream> = Vec::with_capacity(data.variants.len());
 
+    // Like `reknit_impl`, we produce a match arm for each variant
     for (tag, var) in &data.variants {
         let var_ident = &var.ident;
         let struct_name = format_ident!("__{ident}{var_ident}Data");
+
         arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 // Capture each enum field (named), use it's ident to capture it's value
@@ -164,6 +172,15 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                     #ident::#var_ident {#(#fields),*} => (#tag,
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(#struct_name {
+                                // We've wrapped the enum that was passed in in a ManuallyDrop, 
+                                // and now we read each field with ptr::read.
+
+                                // We wrap the enum that was passed in a ManuallyDrop to prevent 
+                                // double drops.
+
+                                // We have to ptr::read because you can't move out of a 
+                                // type that implements `Drop`
+                                // SAFETY: we are reading from a reference
                                 #(#fields: unsafe { ::core::ptr::read(#fields) }),*
                             })
                         }
@@ -180,9 +197,16 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(
                                 #struct_name(
-                                    #(
-                                        unsafe { ::core::ptr::read(#fields) }
-                                    ),*
+                                    // We've wrapped the enum that was passed in in a ManuallyDrop, 
+                                    // and now we read each field with ptr::read.
+
+                                    // We wrap the enum that was passed in a ManuallyDrop to prevent 
+                                    // double drops.
+
+                                    // We have to ptr::read because you can't move out of a 
+                                    // type that implements `Drop`
+                                    // SAFETY: we are reading from a reference
+                                    #( unsafe { ::core::ptr::read(#fields) }),*
                                 )
                             )
                         }
@@ -220,10 +244,7 @@ fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
         }
     });
 
-    let num = arms.len();
-
     quote! {
-        const NUM_VARIANTS: usize = #num;
         fn discriminant(&self) -> usize {
             match &self {
                 #(#arms)*
@@ -239,7 +260,6 @@ struct Auxiliary {
     tokens: proc_macro2::TokenStream,
 }
 
-// TODO: put this in the Auxiliary namespace
 /// Return an auxiliary struct that can hold the data from an enum variant.
 /// Returns `None` if the variant doesn't contain any data
 fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliary> {
@@ -254,6 +274,7 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
         // ident2: type2
         // ...
         syn::Fields::Named(FieldsNamed { named, .. }) => {
+            // Get the names of the fields
             let idents = named.iter().map(|field| field.ident.as_ref().unwrap());
             let types = named.iter().map(|field| &field.ty);
             Some(Auxiliary {
@@ -287,6 +308,7 @@ fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
     // Define the union that holds the data
     let union_ident = format_ident!("__{}Data", data.name);
 
+    // Assorted data that goes into defining all the machinery
     let (mut struct_idents, mut struct_defs, mut field_idents, mut empty_field_idents) =
         (vec![], vec![], vec![], vec![]);
 
