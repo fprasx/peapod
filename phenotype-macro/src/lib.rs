@@ -1,6 +1,7 @@
+// TODO: if you're feeling really good: generics
 use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
-use quote::{format_ident, quote, ToTokens};
+use quote::{format_ident, quote};
 use std::collections::HashMap;
 use std::f32;
 use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Ident, Variant};
@@ -24,7 +25,7 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     let ident = ast.ident.clone();
 
     // Verify we have an enum
-    let ast = match ast.data {
+    let enumb = match ast.data {
         syn::Data::Enum(e) => e,
         syn::Data::Struct(data) => {
             abort!(data.struct_token, "struct `{}` is not an enum", ast.ident; note=NOTE)
@@ -35,7 +36,7 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     };
 
     let data = Condensed {
-        variants: ast
+        variants: enumb
             .variants
             .into_iter()
             .enumerate()
@@ -49,14 +50,13 @@ pub fn phenotype(input: TokenStream) -> TokenStream {
     }
 
     // Abort if there are generics/lifetimes
-    // Reasons:
-    // 1. We can't get the individual types because proc-macro eval happens before type resolution
-    // 2. -> we can't distinguish between types and lifetimes
-    // 3. Generics might come with different trait impls (e.g. T might be Drop, while U isn't)
-    if !ty_generics.to_token_stream().is_empty() {
+    // Reason: incompatible with std::mem::size_of (you have to specify the generic)
+    // You can't say size_of::<Test<T>>, you have to specify size_of::<Test<usize>>
+    if !ast.generics.params.is_empty() {
         abort!(
             ty_generics,
-            "generics/lifetime annotations are not supported for `#[derive(Phenotype)]`"
+            "generics/lifetime annotations are not supported for `#[derive(Phenotype)]`";
+            note = "it may be possible to implement `Phenotype` by hand"
         )
     }
 
@@ -164,7 +164,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                     #ident::#var_ident {#(#fields),*} => (#tag,
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(#struct_name {
-                                #(#fields),*
+                                #(#fields: unsafe { ::core::ptr::read(#fields) }),*
                             })
                         }
                     )
@@ -179,7 +179,11 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                     #ident::#var_ident(#(#fields),*) => (#tag,
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(
-                                #struct_name(#(#fields),*)
+                                #struct_name(
+                                    #(
+                                        unsafe { ::core::ptr::read(#fields) }
+                                    ),*
+                                )
                             )
                         }
                     )
@@ -193,7 +197,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     quote! {
         type Value = #union_ident;
         fn cleave(self) -> (usize, Self::Value) {
-            match self {
+            match &*::std::mem::ManuallyDrop::new(self) {
                 #(#arms),*
             }
         }

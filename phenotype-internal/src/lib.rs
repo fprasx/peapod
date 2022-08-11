@@ -5,11 +5,11 @@
 pub trait Phenotype {
     /// The number of variants of the enum.
     const NUM_VARIANTS: usize;
-    
+
     /// The number of bits needed to represent every variant of the enum.
     const BITS: usize;
 
-    /// The number bits `Phenotype` uses to represent and instance of a type
+    /// The number of bits `Phenotype` uses to represent and instance of a type
     const PEAPOD_SIZE: usize;
 
     /// Whether using `Phenotype` produces a more compact representation.
@@ -34,7 +34,7 @@ pub trait Phenotype {
     /// instance of an enum variant. Calling this function with incorrect
     /// inputs can result in undefined behavior. The tag must always match
     /// the state that the union is in.
-    /// 
+    ///
     /// For example, consider the following example
     /// ```
     /// #[derive(Phenotype)]
@@ -42,13 +42,13 @@ pub trait Phenotype {
     ///     U(usize), // -> tag = 0
     ///     B(bool)   // -> tag = 1
     /// }
-    /// 
+    ///
     /// // This is the type <UB as Phenotype>::Value
     /// union Value {
     ///     U: usize,
     ///     B: bool
     /// }
-    /// 
+    ///
     /// use peapod::Phenotype;
     /// fn main {
     ///     let ub = UB::U(3);

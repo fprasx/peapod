@@ -1,7 +1,7 @@
 // TODO: tests!
 #![feature(test)]
-use std::{fmt::Debug, ptr, mem::ManuallyDrop};
 use bitvec::prelude::*;
+use std::{fmt::Debug, mem::ManuallyDrop, ptr};
 
 pub use phenotype_internal::Phenotype;
 
@@ -144,7 +144,9 @@ where
         let tags = unsafe { ptr::read(&pp.tags) };
         let data = unsafe { ptr::read(&pp.data) };
         IntoIter {
-            tags, data, index: 0
+            tags,
+            data,
+            index: 0,
         }
     }
 }
