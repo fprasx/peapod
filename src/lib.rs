@@ -63,9 +63,7 @@ where
         let tag: usize = self.get_tag(len - 1);
 
         // Remove the last tag
-        for _ in 0..T::BITS {
-            self.tags.pop();
-        }
+        self.tags.truncate((len - 1) * T::BITS);
 
         Some(Phenotype::reknit(tag, data))
     }
@@ -191,82 +189,3 @@ where
             .finish()
     }
 }
-
-// #[cfg(test)]
-// mod bench {
-//     extern crate test;
-//     use phenotype_macro::Phenotype;
-//     use test::black_box;
-//     use test::Bencher;
-
-//     use crate::Peapod;
-
-//     #[derive(Phenotype)]
-//     enum Test {
-//         A(usize, u32),
-//         B { f: f64, u: (u32, u32) },
-//         C,
-//     }
-
-//     #[bench]
-//     fn normal(b: &mut Bencher) {
-//         let mut v = black_box(vec![
-//             Test::A(1, 2),
-//             Test::B { f: 1.0, u: (1, 2) },
-//             Test::C,
-//             Test::A(1, 2),
-//             Test::C,
-//             Test::B { f: 1.0, u: (1, 2) },
-//             Test::A(1, 2),
-//             Test::C,
-//             Test::B { f: 1.0, u: (1, 2) },
-//             Test::A(1, 2),
-//             Test::C,
-//             Test::B { f: 1.0, u: (1, 2) },
-//             Test::A(1, 2),
-//             Test::B { f: 1.0, u: (1, 2) },
-//             Test::C,
-//         ]);
-//         v.reserve(5);
-//         b.iter(|| {
-//             v.push(Test::C);
-//             v.push(Test::B { f: 1.0, u: (1, 2) });
-//             v.push(Test::A(1, 2));
-//             v.push(Test::B { f: 1.0, u: (1, 2) });
-//             v.push(Test::C);
-//         });
-//         v.clear();
-//     }
-
-//     #[bench]
-//     fn peapod(b: &mut Bencher) {
-//         let mut pp = black_box({
-//             let mut pp = Peapod::new();
-//             pp.push(Test::A(1, 2));
-//             pp.push(Test::B { f: 1.0, u: (1, 2) });
-//             pp.push(Test::C);
-//             pp.push(Test::A(1, 2));
-//             pp.push(Test::C);
-//             pp.push(Test::B { f: 1.0, u: (1, 2) });
-//             pp.push(Test::A(1, 2));
-//             pp.push(Test::C);
-//             pp.push(Test::B { f: 1.0, u: (1, 2) });
-//             pp.push(Test::A(1, 2));
-//             pp.push(Test::C);
-//             pp.push(Test::B { f: 1.0, u: (1, 2) });
-//             pp.push(Test::A(1, 2));
-//             pp.push(Test::B { f: 1.0, u: (1, 2) });
-//             pp.push(Test::C);
-//             pp
-//         });
-//         pp.reserve(5);
-//         b.iter(|| {
-//             pp.push(Test::C);
-//             pp.push(Test::B { f: 1.0, u: (1, 2) });
-//             pp.push(Test::A(1, 2));
-//             pp.push(Test::B { f: 1.0, u: (1, 2) });
-//             pp.push(Test::C);
-//         });
-//         pp.clear();
-//     }
-// }

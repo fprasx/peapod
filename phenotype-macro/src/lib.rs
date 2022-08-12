@@ -73,7 +73,7 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let num_variants = data.variants.len();
 
-    let union_ident = format_ident!("__{}Data", data.name);
+    let union_ident = format_ident!("__PhenotypeInternal{}Data", data.name);
 
     quote! {
         #auxiliaries
@@ -99,7 +99,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
 
     // We're going to turn each variant into a match that handles that variant's case
     for (tag, var) in &data.variants {
-        let struct_name = format_ident!("__{}{}Data", data.name, var.ident);
+        let struct_name = format_ident!("__PhenotypeInternal{}{}Data", data.name, var.ident);
         let var_ident = &var.ident;
 
         arms.push(match &var.fields {
@@ -154,7 +154,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
 /// Implement the `value` trait method
 fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     let ident = &data.name;
-    let union_ident = format_ident!("__{ident}Data");
+    let union_ident = format_ident!("__PhenotypeInternal{ident}Data");
 
     // Snippet to extract data out of each field
     let mut arms: Vec<proc_macro2::TokenStream> = Vec::with_capacity(data.variants.len());
@@ -162,7 +162,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     // Like `reknit_impl`, we produce a match arm for each variant
     for (tag, var) in &data.variants {
         let var_ident = &var.ident;
-        let struct_name = format_ident!("__{ident}{var_ident}Data");
+        let struct_name = format_ident!("__PhenotypeInternal{ident}{var_ident}Data");
 
         arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
@@ -172,13 +172,13 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                     #ident::#var_ident {#(#fields),*} => (#tag,
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(#struct_name {
-                                // We've wrapped the enum that was passed in in a ManuallyDrop, 
+                                // We've wrapped the enum that was passed in in a ManuallyDrop,
                                 // and now we read each field with ptr::read.
 
-                                // We wrap the enum that was passed in a ManuallyDrop to prevent 
+                                // We wrap the enum that was passed in a ManuallyDrop to prevent
                                 // double drops.
 
-                                // We have to ptr::read because you can't move out of a 
+                                // We have to ptr::read because you can't move out of a
                                 // type that implements `Drop`
                                 // SAFETY: we are reading from a reference
                                 #(#fields: unsafe { ::core::ptr::read(#fields) }),*
@@ -197,13 +197,13 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(
                                 #struct_name(
-                                    // We've wrapped the enum that was passed in in a ManuallyDrop, 
+                                    // We've wrapped the enum that was passed in in a ManuallyDrop,
                                     // and now we read each field with ptr::read.
 
-                                    // We wrap the enum that was passed in a ManuallyDrop to prevent 
+                                    // We wrap the enum that was passed in a ManuallyDrop to prevent
                                     // double drops.
 
-                                    // We have to ptr::read because you can't move out of a 
+                                    // We have to ptr::read because you can't move out of a
                                     // type that implements `Drop`
                                     // SAFETY: we are reading from a reference
                                     #( unsafe { ::core::ptr::read(#fields) }),*
@@ -265,7 +265,7 @@ struct Auxiliary {
 fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliary> {
     let field = &variant.ident;
 
-    let struct_name = format_ident!("__{}{}Data", enum_name, field);
+    let struct_name = format_ident!("__PhenotypeInternal{}{}Data", enum_name, field);
 
     match &variant.fields {
         // Create a dummy struct that contains the named fields
@@ -306,7 +306,7 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
 /// Define all auxiliary structs and the data enum
 fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
     // Define the union that holds the data
-    let union_ident = format_ident!("__{}Data", data.name);
+    let union_ident = format_ident!("__PhenotypeInternal{}Data", data.name);
 
     // Assorted data that goes into defining all the machinery
     let (mut struct_idents, mut struct_defs, mut field_idents, mut empty_field_idents) =

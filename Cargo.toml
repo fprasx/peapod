@@ -11,3 +11,10 @@ bitvec = "1.0.1"
 
 [workspace]
 members = ["phenotype-macro", "phenotype-internal"]
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "peapod_vs_vec_slapdown"
+harness = false
