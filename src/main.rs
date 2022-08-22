@@ -4,7 +4,17 @@ use phenotype_macro::Phenotype;
 fn main() {
     let x = Test2::A(Helper { _a: 1, _b: 1.0 });
     let mut pp = Peapod::new();
-    pp.push(x);
+    pp.push(x.clone());
+    pp.push(Test2::B {
+        helper: Helper { _a: 1, _b: 1.0 },
+    });
+    pp.push(x.clone());
+    pp.push(x.clone());
+    pp.push(x.clone());
+    pp.push(x.clone());
+    pp.push(x.clone());
+    pp.push(x.clone());
+    println!("{}", pp);
 }
 
 enum Tuples {
@@ -24,13 +34,13 @@ enum Test1 {
     B {},
     C,
 }
-#[derive(Phenotype, Debug)]
+#[derive(Phenotype, Debug, Clone)]
 enum Test2 {
     A(Helper),
     B { helper: Helper },
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct Helper {
     _a: usize,
     _b: f64,

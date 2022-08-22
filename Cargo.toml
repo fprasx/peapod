@@ -3,6 +3,13 @@ name = "peapod"
 version = "0.1.0"
 authors = ["Felix Prasanna"]
 edition = "2021"
+keywords = ["data-structures", "compact", "enums", "space-efficient", "vector"]
+categories = ["data-structures", "compression"]
+description = "Ultra-compact storage for enums"
+documentation = "https://docs.rs/peapod"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/fprasx/peapod"
 
 [dependencies]
 phenotype-internal = { version = "0.1.0", path = "phenotype-internal" }
@@ -11,10 +18,3 @@ bitvec = "1.0.1"
 
 [workspace]
 members = ["phenotype-macro", "phenotype-internal"]
-
-[dev-dependencies]
-criterion = "0.3"
-
-[[bench]]
-name = "peapod_vs_vec_slapdown"
-harness = false
