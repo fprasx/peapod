@@ -14,15 +14,13 @@ pub trait Phenotype {
 
     /// Whether using `Phenotype` produces a more compact representation.
     /// Will return `true` if implementations are the same size.
+    // TODO: change to Option<bool> when generics are added
     const IS_MORE_COMPACT: bool;
 
     /// A type that represents all the data an enum can contain.
     /// This should be a union whose fields each represent a particular
     /// enum variant.
     type Value;
-
-    // TODO: remove this?
-    fn discriminant(&self) -> usize;
 
     /// Takes an enum variant and `cleave`s it into a two parts:
     /// a tag, and an union representing the data the enum can hold.
@@ -64,5 +62,5 @@ pub trait Phenotype {
 // TODO: write the derive macro for this
 pub trait PhenotypeDebug {
     fn discriminant(&self) -> usize;
-    fn debug(tag: usize) -> &'static str;
+    fn debug_tag(tag: usize) -> &'static str;
 }

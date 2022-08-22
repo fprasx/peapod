@@ -144,14 +144,10 @@ impl<T> From<Vec<T>> for Peapod<T>
 where
     T: Phenotype,
 {
-    fn from(pp: Vec<T>) -> Self {
-        let mut tags = BitVec::<usize, Lsb0>::repeat(false, T::BITS * pp.len());
-        let mut data = Vec::with_capacity(pp.len());
-        for (index, (tag, value)) in pp.into_iter().map(|p| p.cleave()).enumerate() {
-            tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
-            data.push(value)
-        }
-        Self { tags, data }
+    fn from(v: Vec<T>) -> Self {
+        let mut pp = Peapod::with_capacity(v.len());
+        pp.extend(v.into_iter());
+        pp
     }
 }
 

@@ -2,7 +2,7 @@
 use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote};
-use std::collections::HashMap;
+use std::{collections::HashMap};
 use std::f32;
 use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Ident, Variant};
 
@@ -14,6 +14,111 @@ type Tag = usize;
 struct Condensed {
     name: Ident,
     variants: HashMap<Tag, Variant>,
+}
+
+#[proc_macro_derive(PhenotypeDebug)]
+#[proc_macro_error]
+pub fn phenotype_debug(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+    let ident = ast.ident.clone();
+
+    // Verify we have an enum
+    let enumb = match ast.data {
+        syn::Data::Enum(e) => e,
+        syn::Data::Struct(data) => {
+            abort!(data.struct_token, "struct `{}` is not an enum", ast.ident; note=NOTE)
+        }
+        syn::Data::Union(data) => {
+            abort!(data.union_token, "union `{}` is not an enum", ast.ident; note=NOTE)
+        }
+    };
+
+    let data = Condensed {
+        variants: enumb
+            .variants
+            .into_iter()
+            .enumerate()
+            .collect::<HashMap<Tag, Variant>>(),
+        name: ident.clone(),
+    };
+
+    // Make sure there are variants!
+    if data.variants.is_empty() {
+        abort!(data.name, "enum `{}` has no variants", data.name)
+    }
+
+    // Abort if there are generics/lifetimes
+    // Reason: incompatible with std::mem::size_of (you have to specify the generic)
+    // You can't say size_of::<Test<T>>, you have to specify size_of::<Test<usize>>
+    if !ast.generics.params.is_empty() {
+        abort!(
+            ty_generics,
+            "generics/lifetime annotations are not supported for `#[derive(Phenotype)]`";
+            note = "it may be possible to implement `Phenotype` by hand"
+        )
+    }
+
+    let discriminant_impl = discriminant_impl(&data);
+    let debug_tag_impl = debug_tag_impl(&data);
+    quote! {
+        impl #impl_generics phenotype_internal::PhenotypeDebug for #ident #ty_generics
+            #where_clause
+        {
+            #discriminant_impl
+            #debug_tag_impl
+        }
+    }.into()
+}
+
+/// Code for the discriminant trait method
+fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
+    let enum_name = &data.name;
+
+    // Zip variants together with discriminants
+    // Each quote! looks something like `ident::variant => number,`
+    let arms = data.variants.iter().map(|(tag, variant)| {
+        let var_ident = &variant.ident;
+        // Make sure we have the proper destructuring syntax
+        match variant.fields {
+            syn::Fields::Named(_) => quote! { #enum_name::#var_ident {..} => #tag,},
+            syn::Fields::Unnamed(_) => quote! { #enum_name::#var_ident (..) => #tag,},
+            syn::Fields::Unit => quote! { #enum_name::#var_ident => #tag,},
+        }
+    });
+
+    quote! {
+        fn discriminant(&self) -> usize {
+            match &self {
+                #(#arms)*
+            }
+        }
+    }
+}
+
+/// Code for the discriminant trait method
+fn debug_tag_impl(data: &Condensed) -> proc_macro2::TokenStream {
+    let enum_name = &data.name;
+
+    // Zip variants together with discriminants
+    // Each quote! looks something like `ident::variant => number,`
+    let arms = data.variants.iter().map(|(tag, variant)| {
+        let var_ident = &variant.ident;
+        let stringified = format!("{}::{}", enum_name, var_ident);
+        quote! {
+            #tag => #stringified,
+        }
+    });
+
+    quote! {
+        fn debug_tag(tag: usize) -> &'static str {
+            match tag {
+                #(#arms)*
+                _ => ::std::panic!("invalid tag")
+            }
+        }
+    }
 }
 
 #[proc_macro_derive(Phenotype)]
@@ -60,8 +165,6 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         )
     }
 
-    let discriminant_impl = discriminant_impl(&data);
-
     let auxiliaries = make_auxiliaries(&data);
 
     let cleave_impl = cleave_impl(&data);
@@ -84,7 +187,6 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             const BITS: usize = #bits;
             const PEAPOD_SIZE: usize = { Self::BITS + ::core::mem::size_of::<#union_ident>() };
             const IS_MORE_COMPACT: bool = Self::PEAPOD_SIZE <= ::core::mem::size_of::<#ident>();
-            #discriminant_impl
             #cleave_impl
             #reknit_impl
         }
@@ -228,30 +330,6 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     }
 }
 
-/// Code for the discriminant trait method
-fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
-    let enum_name = &data.name;
-
-    // Zip variants together with discriminants
-    // Each quote! looks something like `ident::variant => number,`
-    let arms = data.variants.iter().map(|(tag, variant)| {
-        let var_ident = &variant.ident;
-        // Make sure we have the proper destructuring syntax
-        match variant.fields {
-            syn::Fields::Named(_) => quote! { #enum_name::#var_ident {..} => #tag,},
-            syn::Fields::Unnamed(_) => quote! { #enum_name::#var_ident (..) => #tag,},
-            syn::Fields::Unit => quote! { #enum_name::#var_ident => #tag,},
-        }
-    });
-
-    quote! {
-        fn discriminant(&self) -> usize {
-            match &self {
-                #(#arms)*
-            }
-        }
-    }
-}
 
 /// A struct that represents the data found in an enum
 struct Auxiliary {

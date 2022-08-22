@@ -1,5 +1,6 @@
 use peapod::Peapod;
-use phenotype_macro::Phenotype;
+use phenotype_internal::PhenotypeDebug;
+use phenotype_macro::{Phenotype, PhenotypeDebug};
 
 fn main() {
     let x = Test2::A(Helper { _a: 1, _b: 1.0 });
@@ -14,6 +15,7 @@ fn main() {
     pp.push(x.clone());
     pp.push(x.clone());
     pp.push(x.clone());
+    let tag = <Test2 as PhenotypeDebug>::debug_tag(1);
     println!("{}", pp);
 }
 
@@ -22,7 +24,7 @@ enum Tuples {
     B(isize, isize),
 }
 
-#[derive(Phenotype, Debug)]
+#[derive(Phenotype, Debug, PhenotypeDebug)]
 enum Test0 {
     A,
     B,
@@ -34,7 +36,7 @@ enum Test1 {
     B {},
     C,
 }
-#[derive(Phenotype, Debug, Clone)]
+#[derive(Phenotype, Debug, Clone, PhenotypeDebug)]
 enum Test2 {
     A(Helper),
     B { helper: Helper },
