@@ -1,79 +1,23 @@
+use core::fmt::Debug;
+use std::{collections::HashMap, marker::PhantomData};
 use peapod::Peapod;
-use phenotype_internal::PhenotypeDebug;
 use phenotype_macro::{Phenotype, PhenotypeDebug};
 
 fn main() {
-    let x = Test2::A(Helper { _a: 1, _b: 1.0 });
-    let mut pp = Peapod::new();
-    pp.push(x.clone());
-    pp.push(Test2::B {
-        helper: Helper { _a: 1, _b: 1.0 },
-    });
-    pp.push(x.clone());
-    pp.push(x.clone());
-    pp.push(x.clone());
-    pp.push(x.clone());
-    pp.push(x.clone());
-    pp.push(x.clone());
-    let tag = <Test2 as PhenotypeDebug>::debug_tag(1);
-    println!("{}", pp);
+    let mut pp = Peapod::<Generic<usize, u8>>::new(); 
+    pp.push(Generic::One(&4));
+    pp.push(Generic::Two(12, 34));
+    println!("{:?}", pp.pop());
+    println!("{:?}", pp.pop());
 }
 
-enum Tuples {
-    A(usize, usize),
-    B(isize, isize),
+// Yay it works on this megageneric struct!
+#[derive(Phenotype, PhenotypeDebug, Debug)]
+enum Generic<'a, T, U: Debug> {
+    One(&'a T),
+    Two(U, U),
+    Three(*mut *const T),
+    Vec(Vec<T>),
+    HashMap(HashMap<T, U>, [Vec<(T, U)>; 7]),
+    Boo(PhantomData<&'a mut U>),
 }
-
-#[derive(Phenotype, Debug, PhenotypeDebug)]
-enum Test0 {
-    A,
-    B,
-    C,
-}
-#[derive(Phenotype)]
-enum Test1 {
-    A(),
-    B {},
-    C,
-}
-#[derive(Phenotype, Debug, Clone, PhenotypeDebug)]
-enum Test2 {
-    A(Helper),
-    B { helper: Helper },
-}
-
-#[derive(Default, Debug, Clone)]
-struct Helper {
-    _a: usize,
-    _b: f64,
-}
-
-impl Drop for Test2 {
-    fn drop(&mut self) {
-        println!("Dropping test2!")
-    }
-}
-
-impl Drop for Helper {
-    fn drop(&mut self) {
-        println!("Dropping helper!")
-    }
-}
-/*
-
-#[derive(Phenotype)]
-enum Test3 {}
-#[derive(Phenotype)]
-enum Test4 {}
-#[derive(Phenotype)]
-enum Test5 {}
-#[derive(Phenotype)]
-enum Test6 {}
-#[derive(Phenotype)]
-enum Test7 {}
-#[derive(Phenotype)]
-enum Test8 {}
-#[derive(Phenotype)]
-enum Test9 {}
-
-*/

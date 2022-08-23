@@ -10,5 +10,5 @@ proc-macro = true
 phenotype-internal = { path = "../phenotype-internal" }
 proc-macro2 = "1.0"
 quote = { version = "1.0" }
-syn = { version = "1.0", features = ["derive", "printing"] }
+syn = { version = "1.0", features = ["derive", "printing", "visit"] }
 proc-macro-error = "1.0"

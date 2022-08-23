@@ -10,12 +10,11 @@ pub trait Phenotype {
     const BITS: usize;
 
     /// The number of bits `Phenotype` uses to represent and instance of a type
-    const PEAPOD_SIZE: usize;
+    const PEAPOD_SIZE: Option<usize>;
 
     /// Whether using `Phenotype` produces a more compact representation.
     /// Will return `true` if implementations are the same size.
-    // TODO: change to Option<bool> when generics are added
-    const IS_MORE_COMPACT: bool;
+    const IS_MORE_COMPACT: Option<bool>;
 
     /// A type that represents all the data an enum can contain.
     /// This should be a union whose fields each represent a particular
@@ -59,8 +58,7 @@ pub trait Phenotype {
     fn reknit(tag: usize, value: Self::Value) -> Self;
 }
 
-// TODO: write the derive macro for this
-pub trait PhenotypeDebug {
+pub trait PhenotypeDebug: Phenotype {
     fn discriminant(&self) -> usize;
     fn debug_tag(tag: usize) -> &'static str;
 }

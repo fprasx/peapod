@@ -1,123 +1,49 @@
-// TODO: if you're feeling really good: generics
 use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
-use quote::{format_ident, quote};
-use std::{collections::HashMap};
+use quote::{format_ident, quote, ToTokens};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::f32;
-use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Ident, Variant};
+use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Generics, Ident, Variant};
 
 const NOTE: &str = "can only derive phenotype on enums";
 
 type Tag = usize;
 
+/// Holds the logic for parsing generics
+mod generic;
+
 /// Condensed derive input; just the stuff we need
-struct Condensed {
+struct Condensed<'a> {
     name: Ident,
     variants: HashMap<Tag, Variant>,
+    generics: &'a Generics,
 }
 
-#[proc_macro_derive(PhenotypeDebug)]
-#[proc_macro_error]
-pub fn phenotype_debug(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let ast = parse_macro_input!(input as DeriveInput);
-
-    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-    let ident = ast.ident.clone();
-
-    // Verify we have an enum
-    let enumb = match ast.data {
-        syn::Data::Enum(e) => e,
-        syn::Data::Struct(data) => {
-            abort!(data.struct_token, "struct `{}` is not an enum", ast.ident; note=NOTE)
-        }
-        syn::Data::Union(data) => {
-            abort!(data.union_token, "union `{}` is not an enum", ast.ident; note=NOTE)
-        }
-    };
-
-    let data = Condensed {
-        variants: enumb
-            .variants
-            .into_iter()
-            .enumerate()
-            .collect::<HashMap<Tag, Variant>>(),
-        name: ident.clone(),
-    };
-
-    // Make sure there are variants!
-    if data.variants.is_empty() {
-        abort!(data.name, "enum `{}` has no variants", data.name)
-    }
-
-    // Abort if there are generics/lifetimes
-    // Reason: incompatible with std::mem::size_of (you have to specify the generic)
-    // You can't say size_of::<Test<T>>, you have to specify size_of::<Test<usize>>
-    if !ast.generics.params.is_empty() {
-        abort!(
-            ty_generics,
-            "generics/lifetime annotations are not supported for `#[derive(Phenotype)]`";
-            note = "it may be possible to implement `Phenotype` by hand"
-        )
-    }
-
-    let discriminant_impl = discriminant_impl(&data);
-    let debug_tag_impl = debug_tag_impl(&data);
-    quote! {
-        impl #impl_generics phenotype_internal::PhenotypeDebug for #ident #ty_generics
-            #where_clause
-        {
-            #discriminant_impl
-            #debug_tag_impl
-        }
-    }.into()
-}
-
-/// Code for the discriminant trait method
-fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
-    let enum_name = &data.name;
-
-    // Zip variants together with discriminants
-    // Each quote! looks something like `ident::variant => number,`
-    let arms = data.variants.iter().map(|(tag, variant)| {
-        let var_ident = &variant.ident;
-        // Make sure we have the proper destructuring syntax
-        match variant.fields {
-            syn::Fields::Named(_) => quote! { #enum_name::#var_ident {..} => #tag,},
-            syn::Fields::Unnamed(_) => quote! { #enum_name::#var_ident (..) => #tag,},
-            syn::Fields::Unit => quote! { #enum_name::#var_ident => #tag,},
-        }
-    });
-
-    quote! {
-        fn discriminant(&self) -> usize {
-            match &self {
-                #(#arms)*
+fn variant_generics(all_generics: &Generics, variant: &Variant) -> proc_macro2::TokenStream {
+    let mut generics = BTreeSet::new();
+    let mut lifetimes = BTreeSet::new();
+    match &variant.fields {
+        syn::Fields::Named(fields) => {
+            for f in &fields.named {
+                let (tys, lts) = generic::extract_generics(all_generics, &f.ty);
+                generics.extend(tys);
+                lifetimes.extend(lts);
+            }
+            quote! {
+                <#(#lifetimes,)* #(#generics),*>
             }
         }
-    }
-}
-
-/// Code for the discriminant trait method
-fn debug_tag_impl(data: &Condensed) -> proc_macro2::TokenStream {
-    let enum_name = &data.name;
-
-    // Zip variants together with discriminants
-    // Each quote! looks something like `ident::variant => number,`
-    let arms = data.variants.iter().map(|(tag, variant)| {
-        let var_ident = &variant.ident;
-        let stringified = format!("{}::{}", enum_name, var_ident);
-        quote! {
-            #tag => #stringified,
-        }
-    });
-
-    quote! {
-        fn debug_tag(tag: usize) -> &'static str {
-            match tag {
-                #(#arms)*
-                _ => ::std::panic!("invalid tag")
+        syn::Fields::Unnamed(fields) => {
+            for f in &fields.unnamed {
+                let (tys, lts) = generic::extract_generics(all_generics, &f.ty);
+                generics.extend(tys);
+                lifetimes.extend(lts);
+            }
+            quote! {
+                <#(#lifetimes,)* #(#generics),*>
             }
         }
+        syn::Fields::Unit => quote!(<>),
     }
 }
 
@@ -147,6 +73,7 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             .enumerate()
             .collect::<HashMap<Tag, Variant>>(),
         name: ident.clone(),
+        generics: &ast.generics,
     };
 
     // Make sure there are variants!
@@ -154,13 +81,11 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         abort!(data.name, "enum `{}` has no variants", data.name)
     }
 
-    // Abort if there are generics/lifetimes
-    // Reason: incompatible with std::mem::size_of (you have to specify the generic)
-    // You can't say size_of::<Test<T>>, you have to specify size_of::<Test<usize>>
-    if !ast.generics.params.is_empty() {
+    // Abort if there are const generics - works funky with the way we deal with generics
+    if ast.generics.const_params().next().is_some() {
         abort!(
             ty_generics,
-            "generics/lifetime annotations are not supported for `#[derive(Phenotype)]`";
+            "const generics are not supported for `#[derive(Phenotype)]`";
             note = "it may be possible to implement `Phenotype` by hand"
         )
     }
@@ -178,6 +103,25 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let union_ident = format_ident!("__PhenotypeInternal{}Data", data.name);
 
+    let peapod_size = match data.generics.type_params().next() {
+        Some(_) => quote!(None),
+        // No generics
+        None => quote!(Some({ Self::BITS + ::core::mem::size_of::<#union_ident>() })),
+    };
+
+    let is_more_compact = match data.generics.type_params().next() {
+        Some(_) => quote!(None),
+        // No generics
+        None => {
+            quote!(
+                Some(
+                    { Self::BITS + ::core::mem::size_of::<#union_ident>() 
+                        <= ::core::mem::size_of::<#ident>()}
+                )
+            )
+        }
+    };
+
     quote! {
         #auxiliaries
         impl #impl_generics phenotype_internal::Phenotype for #ident #ty_generics
@@ -185,8 +129,8 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         {
             const NUM_VARIANTS: usize = #num_variants;
             const BITS: usize = #bits;
-            const PEAPOD_SIZE: usize = { Self::BITS + ::core::mem::size_of::<#union_ident>() };
-            const IS_MORE_COMPACT: bool = Self::PEAPOD_SIZE <= ::core::mem::size_of::<#ident>();
+            const PEAPOD_SIZE: Option<usize> = #peapod_size;
+            const IS_MORE_COMPACT: Option<bool> = #is_more_compact;
             #cleave_impl
             #reknit_impl
         }
@@ -203,7 +147,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
     for (tag, var) in &data.variants {
         let struct_name = format_ident!("__PhenotypeInternal{}{}Data", data.name, var.ident);
         let var_ident = &var.ident;
-
+        let var_generics = variant_generics(data.generics, var);
         arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 let struct_fields = named
@@ -213,7 +157,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
                 quote! {
                     #tag => {
                         // SAFETY: Safe because the tag guarantees that we are reading the correct field
-                        let data = ::std::mem::ManuallyDrop::<#struct_name>::into_inner(
+                        let data = ::std::mem::ManuallyDrop::<#struct_name :: #var_generics>::into_inner(
                             unsafe { value.#var_ident }
                         );
                         #ident::#var_ident { #(#struct_fields: data.#struct_fields),* }
@@ -226,7 +170,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
                 quote! {
                     #tag => {
                         // SAFETY: Safe because the tag guarantees that we are reading the correct field
-                        let data = ::std::mem::ManuallyDrop::<#struct_name>::into_inner(
+                        let data = ::std::mem::ManuallyDrop::<#struct_name :: #var_generics>::into_inner(
                             unsafe { value.#var_ident }
                         );
                         #ident::#var_ident ( #(data.#struct_field_placeholders),* )
@@ -242,11 +186,13 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
             }
         })
     }
+
+    let generics = data.generics.split_for_impl().1;
     quote! {
-        fn reknit(tag: usize, value: Self::Value) -> #ident {
+        fn reknit(tag: usize, value: Self::Value) -> #ident #generics {
             match tag {
                 #(#arms),*
-                // There should be no other cases, as therea are no other variants
+                // There should be no other cases, as there are no other variants
                 _ => ::std::unreachable!()
             }
         }
@@ -261,11 +207,14 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     // Snippet to extract data out of each field
     let mut arms: Vec<proc_macro2::TokenStream> = Vec::with_capacity(data.variants.len());
 
+    let generics = data.generics.split_for_impl().1;
+
     // Like `reknit_impl`, we produce a match arm for each variant
     for (tag, var) in &data.variants {
         let var_ident = &var.ident;
         let struct_name = format_ident!("__PhenotypeInternal{ident}{var_ident}Data");
 
+        let var_generics = variant_generics(data.generics, var);
         arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 // Capture each enum field (named), use it's ident to capture it's value
@@ -273,7 +222,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                 quote! {
                     #ident::#var_ident {#(#fields),*} => (#tag,
                         #union_ident {
-                            #var_ident: ::std::mem::ManuallyDrop::new(#struct_name {
+                            #var_ident: ::std::mem::ManuallyDrop::new(#struct_name :: #var_generics {
                                 // We've wrapped the enum that was passed in in a ManuallyDrop,
                                 // and now we read each field with ptr::read.
 
@@ -298,7 +247,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                     #ident::#var_ident(#(#fields),*) => (#tag,
                         #union_ident {
                             #var_ident: ::std::mem::ManuallyDrop::new(
-                                #struct_name(
+                                #struct_name :: #var_generics (
                                     // We've wrapped the enum that was passed in in a ManuallyDrop,
                                     // and now we read each field with ptr::read.
 
@@ -321,7 +270,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
         })
     }
     quote! {
-        type Value = #union_ident;
+        type Value = #union_ident #generics;
         fn cleave(self) -> (usize, Self::Value) {
             match &*::std::mem::ManuallyDrop::new(self) {
                 #(#arms),*
@@ -329,7 +278,6 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
         }
     }
 }
-
 
 /// A struct that represents the data found in an enum
 struct Auxiliary {
@@ -340,10 +288,16 @@ struct Auxiliary {
 
 /// Return an auxiliary struct that can hold the data from an enum variant.
 /// Returns `None` if the variant doesn't contain any data
-fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliary> {
+fn def_auxiliary_struct(
+    variant: &Variant,
+    enum_name: &Ident,
+    all_generics: &Generics,
+) -> Option<Auxiliary> {
     let field = &variant.ident;
 
     let struct_name = format_ident!("__PhenotypeInternal{}{}Data", enum_name, field);
+
+    let generics = variant_generics(all_generics, variant);
 
     match &variant.fields {
         // Create a dummy struct that contains the named fields
@@ -358,7 +312,7 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
             Some(Auxiliary {
                 ident: struct_name.clone(),
                 tokens: quote! {
-                    struct #struct_name {
+                    struct #struct_name #generics {
                         #(#idents: #types,)*
                     }
                 },
@@ -372,7 +326,7 @@ fn def_auxiliary_struct(variant: &Variant, enum_name: &Ident) -> Option<Auxiliar
             let types = unnamed.iter().map(|field| &field.ty);
             Some(Auxiliary {
                 ident: struct_name.clone(),
-                tokens: quote! { struct #struct_name (#(#types,)*); },
+                tokens: quote! { struct #struct_name #generics (#(#types,)*); },
             })
         }
 
@@ -387,25 +341,138 @@ fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
     let union_ident = format_ident!("__PhenotypeInternal{}Data", data.name);
 
     // Assorted data that goes into defining all the machinery
-    let (mut struct_idents, mut struct_defs, mut field_idents, mut empty_field_idents) =
-        (vec![], vec![], vec![], vec![]);
+    let (
+        mut struct_idents,
+        mut struct_defs,
+        mut field_idents,
+        mut empty_field_idents,
+        mut struct_generics,
+    ) = (vec![], vec![], vec![], vec![], vec![]);
 
     for var in data.variants.values() {
-        if let Some(aux) = def_auxiliary_struct(var, &data.name) {
+        if let Some(aux) = def_auxiliary_struct(var, &data.name, data.generics) {
             struct_idents.push(aux.ident);
             struct_defs.push(aux.tokens);
-            field_idents.push(var.ident.clone())
+            field_idents.push(var.ident.clone());
+            struct_generics.push(variant_generics(data.generics, var));
         } else {
             empty_field_idents.push(var.ident.clone())
         }
     }
 
+    let union_generics = data.generics.split_for_impl().1;
+
     quote! {
         #(#struct_defs)*
         #[allow(non_snake_case)]
-        union #union_ident {
-            #(#field_idents: ::std::mem::ManuallyDrop<#struct_idents>,)*
+        union #union_ident #union_generics {
+            #(#field_idents: ::std::mem::ManuallyDrop<#struct_idents #struct_generics>,)*
             #(#empty_field_idents: (),)*
+        }
+    }
+}
+
+#[proc_macro_derive(PhenotypeDebug)]
+#[proc_macro_error]
+pub fn phenotype_debug(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+    let ident = ast.ident.clone();
+
+    // Verify we have an enum
+    let enumb = match ast.data {
+        syn::Data::Enum(e) => e,
+        syn::Data::Struct(data) => {
+            abort!(data.struct_token, "struct `{}` is not an enum", ast.ident; note=NOTE)
+        }
+        syn::Data::Union(data) => {
+            abort!(data.union_token, "union `{}` is not an enum", ast.ident; note=NOTE)
+        }
+    };
+
+    let data = Condensed {
+        variants: enumb
+            .variants
+            .into_iter()
+            .enumerate()
+            .collect::<HashMap<Tag, Variant>>(),
+        name: ident.clone(),
+        generics: &&ast.generics,
+    };
+
+    // Make sure there are variants!
+    if data.variants.is_empty() {
+        abort!(data.name, "enum `{}` has no variants", data.name)
+    }
+
+    // Abort if there are const generics - works funky with the way we deal with generics
+    if ast.generics.const_params().next().is_some() {
+        abort!(
+            ty_generics,
+            "const generics are not supported for `#[derive(Phenotype)]`";
+            note = "it may be possible to implement `Phenotype` by hand"
+        )
+    }
+
+    let discriminant_impl = discriminant_impl(&data);
+    let debug_tag_impl = debug_tag_impl(&data);
+    quote! {
+        impl #impl_generics phenotype_internal::PhenotypeDebug for #ident #ty_generics
+            #where_clause
+        {
+            #discriminant_impl
+            #debug_tag_impl
+        }
+    }
+    .into()
+}
+
+/// Code for the discriminant trait method
+fn discriminant_impl(data: &Condensed) -> proc_macro2::TokenStream {
+    let enum_name = &data.name;
+
+    // Zip variants together with discriminants
+    // Each quote! looks something like `ident::variant => number,`
+    let arms = data.variants.iter().map(|(tag, variant)| {
+        let var_ident = &variant.ident;
+        // Make sure we have the proper destructuring syntax
+        match variant.fields {
+            syn::Fields::Named(_) => quote! { #enum_name::#var_ident {..} => #tag,},
+            syn::Fields::Unnamed(_) => quote! { #enum_name::#var_ident (..) => #tag,},
+            syn::Fields::Unit => quote! { #enum_name::#var_ident => #tag,},
+        }
+    });
+
+    quote! {
+        fn discriminant(&self) -> usize {
+            match &self {
+                #(#arms)*
+            }
+        }
+    }
+}
+
+/// Code for the debug_tag trait method
+fn debug_tag_impl(data: &Condensed) -> proc_macro2::TokenStream {
+    let enum_name = &data.name;
+
+    // Zip variants together with discriminants
+    // Each quote! looks something like `ident::variant => number,`
+    let arms = data.variants.iter().map(|(tag, variant)| {
+        let var_ident = &variant.ident;
+        let stringified = format!("{}::{}", enum_name, var_ident);
+        quote! {
+            #tag => #stringified,
+        }
+    });
+
+    quote! {
+        fn debug_tag(tag: usize) -> &'static str {
+            match tag {
+                #(#arms)*
+                _ => ::std::panic!("invalid tag")
+            }
         }
     }
 }
