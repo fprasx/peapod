@@ -2,6 +2,10 @@
 name = "phenotype-macro"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Exports `#[derive(Phenotype)]` macro for `Peapod` crate"
+repository = "https://github.com/fprasx/peapod"
+homepage = "https://github.com/fprasx/peapod"
 
 [lib]
 proc-macro = true
