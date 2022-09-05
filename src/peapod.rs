@@ -9,6 +9,50 @@ use core::{
 };
 use phenotype_internal::Phenotype;
 
+// credit: https://veykril.github.io/tlborm/decl-macros/building-blocks/counting.html#bit-twiddling
+#[doc(hidden)]
+#[macro_export]
+macro_rules! count_tts {
+    () => { 0 };
+    ($odd:tt $($a:tt $b:tt)*) => { ($crate::count_tts!($($a)*) << 1) | 1 };
+    ($($a:tt $even:tt)*) => { $crate::count_tts!($($a)*) << 1 };
+}
+
+#[macro_export]
+/// A nice way to generate a `Peapod` from a list of elements. If you're familiar
+/// with the `vec![]` macro, this is the equivalent but for `Peapod`.
+/// ```rust
+/// # use peapod::{Peapod, Phenotype, peapod};
+/// #[derive(Phenotype)]
+/// enum Test {
+///     A,
+///     B
+/// }
+/// 
+/// let mut fast = peapod![Test::A, Test::B];
+/// 
+/// // is the same as
+/// 
+/// let mut slow = Peapod::with_capacity(2);
+/// slow.push(Test::A);
+/// slow.push(Test::B);
+/// ```
+macro_rules! peapod {
+    () => {
+        $crate::Peapod::new();
+    };
+    ($($elem:expr),+ $(,)?) => {
+        {
+            let count = $crate::count_tts!($($elem:expr),*);
+            let mut pp = $crate::Peapod::with_capacity(count);
+            $(pp.push($elem);)*
+            pp
+        }
+
+    };
+}
+
+/// A `vec`-like data structure for compactly storing `enum`s that implement [`Phenotype`].
 #[derive(Eq)]
 pub struct Peapod<T: Phenotype> {
     tags: BitVec,
@@ -19,7 +63,7 @@ impl<T> Peapod<T>
 where
     T: Phenotype,
 {
-    /// Returns a new `Peapod` with 0 capacity and 0 length
+    /// Create a new `Peapod` with 0 capacity and 0 length. This does not allocate.
     pub fn new() -> Self {
         Peapod {
             tags: BitVec::new(),
@@ -37,7 +81,7 @@ where
         self.tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
     }
 
-    /// Append a new element onto the end of the collection
+    /// Append a new element to the end of the collection.
     pub fn push(&mut self, t: T) {
         let pos = self.data.len();
 
@@ -58,7 +102,7 @@ where
     }
 
     /// Remove an element from the end of the collection.
-    /// Returns `None` if the collection is empty
+    /// Returns `None` if the collection is empty.
     pub fn pop(&mut self) -> Option<T> {
         let len = self.data.len();
 
@@ -89,7 +133,7 @@ where
         self.data.len() == 0
     }
 
-    /// Returns weather the collection is empty (it contains noe elements).
+    /// Returns whether the collection is empty (it contains no elements).
     pub fn reserve(&mut self, elements: usize) {
         self.data.reserve(elements);
         self.tags.reserve(elements * T::BITS);
@@ -111,7 +155,7 @@ where
         self.tags.clear();
     }
 
-    /// Shortens the colleciton so it only contains the first `len` elements.
+    /// Shortens the collection so it only contains the first `len` elements.
     /// **Note**: this does not affect its allocated capacity.
     pub fn truncate(&mut self, len: usize) {
         self.tags.truncate(len * T::BITS);
@@ -230,7 +274,7 @@ where
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.data.len(), Some(self.data.len()))
+        (self.data.len() - self.index, Some(self.data.len() - self.index))
     }
 }
 
@@ -356,12 +400,58 @@ where
 mod tests {
     use super::*;
     use phenotype_macro::Phenotype;
+    use core::iter::{DoubleEndedIterator, Iterator};
 
     #[derive(Phenotype, PartialEq, Debug)]
     enum TestData {
         A { u: usize, f: f64 },
         B(usize, f64),
         C,
+    }
+
+    #[test]
+    fn exact_size_iterator() {
+        let pp = peapod![
+            TestData::A { u: 1, f: 1.0 },
+            TestData::B(1, 1.0),
+            TestData::A { u: 1, f: 1.0 },
+            TestData::B(1, 1.0),
+            TestData::A { u: 1, f: 1.0 },
+            TestData::B(1, 1.0),
+            TestData::A { u: 1, f: 1.0 }
+        ];
+        let mut pp = pp.into_iter();
+        assert_eq!(pp.len(), 7);
+        assert_eq!(pp.size_hint(), (7, Some(7)));
+        pp.next();
+        assert_eq!(pp.len(), 6);
+        assert_eq!(pp.size_hint(), (6, Some(6)));
+        for _ in 0..10 { pp.next(); };
+        assert_eq!(pp.len(), 0);
+        assert_eq!(pp.size_hint(), (0, Some(0)));
+    }
+
+    #[test]
+    fn double_ended_iterator() {
+        let pp = peapod![
+            TestData::A { u: 1, f: 1.0 },
+            TestData::B(1, 1.0),
+            TestData::A { u: 1, f: 1.0 },
+            TestData::B(1, 1.0),
+            TestData::A { u: 1, f: 1.0 },
+            TestData::B(1, 1.0),
+            TestData::A { u: 1, f: 1.0 }
+        ];
+        let mut pp = pp.into_iter();
+        assert_eq!(pp.next_back(), Some(TestData::A { u: 1, f: 1.0 }));
+        assert_eq!(pp.next(), Some(TestData::A { u: 1, f: 1.0 }));
+        assert_eq!(pp.next_back(), Some(TestData::B(1, 1.0)));
+        assert_eq!(pp.next(), Some(TestData::B(1, 1.0)));
+        assert_eq!(pp.next_back(), Some(TestData::A { u: 1, f: 1.0 }));
+        assert_eq!(pp.next(), Some(TestData::A { u: 1, f: 1.0 }));
+        assert_eq!(pp.next_back(), Some(TestData::B(1, 1.0)));
+        assert_eq!(pp.next(), None);
+        assert_eq!(pp.next_back(), None);
     }
 
     #[test]

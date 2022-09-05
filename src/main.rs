@@ -1,4 +1,4 @@
-use peapod::{Phenotype, Peapod};
+use peapod::{Peapod, Phenotype};
 
 fn main() {
     // The Peapod representation is a lot smaller!

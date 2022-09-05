@@ -1,7 +1,7 @@
 # Peapod
 
 `Peapod` is a data structure for storing `enum`s super-compactly, like peas in a
-pod! It works with any `enum` that implements the `Phenotype` trait, which
+pod. It works with any `enum` that implements the `Phenotype` trait, which
 captures the behaviour of each variant.
 
 ## Motivation
@@ -194,8 +194,8 @@ fn cleave(self) -> (usize, Self::Value) {
 }
 ```
 
-All we're doing is match on the `enum` variant and reading out each field into
-the correct auxiliary struct.
+All we're doing is `match`ing on the `enum` variant and reading out each field
+into the correct auxiliary struct.
 
 `cleave` does the opposite. Based on the tag, it reads the `union` and generates
 and `enum` variant from the data contained in the auxiliary `struct`.
@@ -237,14 +237,19 @@ fn reknit(tag: usize, value: Self::Value) -> ThreeTypes<T> {
     variant, so there is no need to store a tag.
 -   Sometimes `Peapod` won't produce a smaller representation. You can check
     this using the provided `IS_MORE_COMPACT` constant.
+-   You don't have an allocator. I'm working on a fixed-size `Peapod` but it
+    seems like it's going to be difficult as long as `const` generics are
+    incomplete.
 
 ## License
 
 Licensed under either of
 
--   Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
-    http://www.apache.org/licenses/LICENSE-2.0)
--   MIT license ([LICENSE-MIT](LICENSE-MIT) or
+-   Apache License, Version 2.0
+    ([LICENSE-APACHE](https://github.com/fprasx/peapod/blob/main/LICENSE-APACHE)
+    or http://www.apache.org/licenses/LICENSE-2.0)
+-   MIT license
+    ([LICENSE-MIT](https://github.com/fprasx/peapod/blob/main/LICENSE-MIT) or
     http://opensource.org/licenses/MIT)
 
 at your option.
