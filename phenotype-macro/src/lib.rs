@@ -1,8 +1,7 @@
 use proc_macro2::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
-use quote::{format_ident, quote, ToTokens};
-use std::collections::{BTreeSet, HashMap, HashSet};
-use std::f32;
+use quote::{format_ident, quote};
+use std::collections::HashMap;
 use syn::{parse_macro_input, DeriveInput, FieldsNamed, FieldsUnnamed, Generics, Ident, Variant};
 
 const NOTE: &str = "can only derive phenotype on enums";
@@ -18,33 +17,14 @@ struct Condensed<'a> {
     variants: HashMap<Tag, Variant>,
     generics: &'a Generics,
 }
+// For calculating log without using the unstable feature
+const fn num_bits<T>() -> usize {
+    std::mem::size_of::<T>() * 8
+}
 
-fn variant_generics(all_generics: &Generics, variant: &Variant) -> proc_macro2::TokenStream {
-    let mut generics = BTreeSet::new();
-    let mut lifetimes = BTreeSet::new();
-    match &variant.fields {
-        syn::Fields::Named(fields) => {
-            for f in &fields.named {
-                let (tys, lts) = generic::extract_generics(all_generics, &f.ty);
-                generics.extend(tys);
-                lifetimes.extend(lts);
-            }
-            quote! {
-                <#(#lifetimes,)* #(#generics),*>
-            }
-        }
-        syn::Fields::Unnamed(fields) => {
-            for f in &fields.unnamed {
-                let (tys, lts) = generic::extract_generics(all_generics, &f.ty);
-                generics.extend(tys);
-                lifetimes.extend(lts);
-            }
-            quote! {
-                <#(#lifetimes,)* #(#generics),*>
-            }
-        }
-        syn::Fields::Unit => quote!(<>),
-    }
+fn log2(x: usize) -> u32 {
+    assert!(x > 0);
+    num_bits::<usize>() as u32 - x.leading_zeros() - 1
 }
 
 #[proc_macro_derive(Phenotype)]
@@ -97,7 +77,29 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let reknit_impl = reknit_impl(&data);
 
     // We cast as we actually do want to rounding to the nearest int
-    let bits = f32::log2(data.variants.len() as f32) as usize;
+    // TODO: not necessarily right
+    // let bits = f32::log2(data.variants.len() as f32) as usize;
+
+    let bits = {
+        if data.variants.is_empty() {
+            0
+        } else {
+            let log = log2(data.variants.len());
+            let pow = 2usize.pow(log);
+
+            // if 2 ** log is less than the number of variants, that means
+            // the log rounded down (i.e. the float version was something like
+            // 1.4, which became 1)
+            //
+            // We round up because we always carry the extra bits, i.e.
+            // 7 variants needs 2.8 bits but we carry 3
+            (if pow < data.variants.len() {
+                log + 1
+            } else {
+                log
+            }) as usize
+        }
+    };
 
     let num_variants = data.variants.len();
 
@@ -106,7 +108,16 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let peapod_size = match data.generics.type_params().next() {
         Some(_) => quote!(None),
         // No generics
-        None => quote!(Some({ Self::BITS + ::core::mem::size_of::<#union_ident>() })),
+        None => {
+            let bytes = bits / 8
+                + if bits % 8 == 0 {
+                    0
+                } else {
+                    // Add an extra byte if there are remaining bits (a partial byte)
+                    1
+                };
+            quote!(Some({ #bytes + ::core::mem::size_of::<#union_ident>() }))
+        }
     };
 
     let is_more_compact = match data.generics.type_params().next() {
@@ -115,8 +126,14 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         None => {
             quote!(
                 Some(
-                    { Self::BITS + ::core::mem::size_of::<#union_ident>() 
-                        <= ::core::mem::size_of::<#ident>()}
+                        // unwrap isn't const
+                        match Self::PEAPOD_SIZE {
+                            Some(size) => size <= ::core::mem::size_of::<#ident>(),
+                            // Unreachable as if there are not generics, PEAPOD_SIZE
+                            // is `Some`
+                            None => unreachable!()
+                        }
+
                 )
             )
         }
@@ -147,7 +164,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
     for (tag, var) in &data.variants {
         let struct_name = format_ident!("__PhenotypeInternal{}{}Data", data.name, var.ident);
         let var_ident = &var.ident;
-        let var_generics = variant_generics(data.generics, var);
+        let var_generics = generic::variant_generics(data.generics, var);
         arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 let struct_fields = named
@@ -157,7 +174,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
                 quote! {
                     #tag => {
                         // SAFETY: Safe because the tag guarantees that we are reading the correct field
-                        let data = ::std::mem::ManuallyDrop::<#struct_name :: #var_generics>::into_inner(
+                        let data = ::core::mem::ManuallyDrop::<#struct_name :: #var_generics>::into_inner(
                             unsafe { value.#var_ident }
                         );
                         #ident::#var_ident { #(#struct_fields: data.#struct_fields),* }
@@ -170,7 +187,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
                 quote! {
                     #tag => {
                         // SAFETY: Safe because the tag guarantees that we are reading the correct field
-                        let data = ::std::mem::ManuallyDrop::<#struct_name :: #var_generics>::into_inner(
+                        let data = ::core::mem::ManuallyDrop::<#struct_name :: #var_generics>::into_inner(
                             unsafe { value.#var_ident }
                         );
                         #ident::#var_ident ( #(data.#struct_field_placeholders),* )
@@ -193,7 +210,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
             match tag {
                 #(#arms),*
                 // There should be no other cases, as there are no other variants
-                _ => ::std::unreachable!()
+                _ => ::core::unreachable!()
             }
         }
     }
@@ -214,7 +231,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
         let var_ident = &var.ident;
         let struct_name = format_ident!("__PhenotypeInternal{ident}{var_ident}Data");
 
-        let var_generics = variant_generics(data.generics, var);
+        let var_generics = generic::variant_generics(data.generics, var);
         arms.push(match &var.fields {
             syn::Fields::Named(FieldsNamed { named, .. }) => {
                 // Capture each enum field (named), use it's ident to capture it's value
@@ -222,7 +239,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                 quote! {
                     #ident::#var_ident {#(#fields),*} => (#tag,
                         #union_ident {
-                            #var_ident: ::std::mem::ManuallyDrop::new(#struct_name :: #var_generics {
+                            #var_ident: ::core::mem::ManuallyDrop::new(#struct_name :: #var_generics {
                                 // We've wrapped the enum that was passed in in a ManuallyDrop,
                                 // and now we read each field with ptr::read.
 
@@ -246,7 +263,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
                 quote! {
                     #ident::#var_ident(#(#fields),*) => (#tag,
                         #union_ident {
-                            #var_ident: ::std::mem::ManuallyDrop::new(
+                            #var_ident: ::core::mem::ManuallyDrop::new(
                                 #struct_name :: #var_generics (
                                     // We've wrapped the enum that was passed in in a ManuallyDrop,
                                     // and now we read each field with ptr::read.
@@ -272,7 +289,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     quote! {
         type Value = #union_ident #generics;
         fn cleave(self) -> (usize, Self::Value) {
-            match &*::std::mem::ManuallyDrop::new(self) {
+            match &*::core::mem::ManuallyDrop::new(self) {
                 #(#arms),*
             }
         }
@@ -297,7 +314,7 @@ fn def_auxiliary_struct(
 
     let struct_name = format_ident!("__PhenotypeInternal{}{}Data", enum_name, field);
 
-    let generics = variant_generics(all_generics, variant);
+    let generics = generic::variant_generics(all_generics, variant);
 
     match &variant.fields {
         // Create a dummy struct that contains the named fields
@@ -354,7 +371,7 @@ fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
             struct_idents.push(aux.ident);
             struct_defs.push(aux.tokens);
             field_idents.push(var.ident.clone());
-            struct_generics.push(variant_generics(data.generics, var));
+            struct_generics.push(generic::variant_generics(data.generics, var));
         } else {
             empty_field_idents.push(var.ident.clone())
         }
@@ -366,7 +383,7 @@ fn make_auxiliaries(data: &Condensed) -> proc_macro2::TokenStream {
         #(#struct_defs)*
         #[allow(non_snake_case)]
         union #union_ident #union_generics {
-            #(#field_idents: ::std::mem::ManuallyDrop<#struct_idents #struct_generics>,)*
+            #(#field_idents: ::core::mem::ManuallyDrop<#struct_idents #struct_generics>,)*
             #(#empty_field_idents: (),)*
         }
     }
@@ -398,7 +415,7 @@ pub fn phenotype_debug(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
             .enumerate()
             .collect::<HashMap<Tag, Variant>>(),
         name: ident.clone(),
-        generics: &&ast.generics,
+        generics: &ast.generics,
     };
 
     // Make sure there are variants!
@@ -471,7 +488,7 @@ fn debug_tag_impl(data: &Condensed) -> proc_macro2::TokenStream {
         fn debug_tag(tag: usize) -> &'static str {
             match tag {
                 #(#arms)*
-                _ => ::std::panic!("invalid tag")
+                _ => ::core::panic!("invalid tag")
             }
         }
     }
