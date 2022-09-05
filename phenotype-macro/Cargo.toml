@@ -11,7 +11,7 @@ homepage = "https://github.com/fprasx/peapod"
 proc-macro = true
 
 [dependencies]
-phenotype-internal = { path = "../phenotype-internal" }
+phenotype-internal = { path = "../phenotype-internal", version = "0.1.0" }
 proc-macro2 = "1.0"
 quote = { version = "1.0" }
 syn = { version = "1.0", features = ["derive", "printing", "visit"] }
