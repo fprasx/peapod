@@ -14,7 +14,11 @@ repository = "https://github.com/fprasx/peapod"
 [dependencies]
 phenotype-internal = { version = "0.1.0", path = "phenotype-internal" }
 phenotype-macro = { version = "0.1.0", path = "phenotype-macro" }
-bitvec = "1.0.1"
+
+[dependencies.bitvec]
+version = "1"
+default-features = false
+features = ["alloc"]
 
 [workspace]
 members = ["phenotype-macro", "phenotype-internal"]

@@ -1,5 +1,7 @@
 extern crate proc_macro;
 use core::ops::Not;
+use quote::quote;
+use std::collections::BTreeSet;
 use syn::{
     visit::{self as subrecurse, Visit},
     *,
@@ -60,4 +62,32 @@ pub fn extract_generics<'generics>(
             .filter(|lt| visitor.unseen_lifetimes.contains(lt).not())
             .collect(),
     )
+}
+
+pub fn variant_generics(all_generics: &Generics, variant: &Variant) -> proc_macro2::TokenStream {
+    let mut generics = BTreeSet::new();
+    let mut lifetimes = BTreeSet::new();
+    match &variant.fields {
+        syn::Fields::Named(fields) => {
+            for f in &fields.named {
+                let (tys, lts) = extract_generics(all_generics, &f.ty);
+                generics.extend(tys);
+                lifetimes.extend(lts);
+            }
+            quote! {
+                <#(#lifetimes,)* #(#generics),*>
+            }
+        }
+        syn::Fields::Unnamed(fields) => {
+            for f in &fields.unnamed {
+                let (tys, lts) = extract_generics(all_generics, &f.ty);
+                generics.extend(tys);
+                lifetimes.extend(lts);
+            }
+            quote! {
+                <#(#lifetimes,)* #(#generics),*>
+            }
+        }
+        syn::Fields::Unit => quote!(<>),
+    }
 }

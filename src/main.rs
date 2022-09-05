@@ -1,23 +1,27 @@
-use core::fmt::Debug;
-use std::{collections::HashMap, marker::PhantomData};
-use peapod::Peapod;
-use phenotype_macro::{Phenotype, PhenotypeDebug};
+use peapod::{Phenotype, Peapod};
 
 fn main() {
-    let mut pp = Peapod::<Generic<usize, u8>>::new(); 
-    pp.push(Generic::One(&4));
-    pp.push(Generic::Two(12, 34));
-    println!("{:?}", pp.pop());
-    println!("{:?}", pp.pop());
+    // The Peapod representation is a lot smaller!
+    // These numbers are bytes
+    assert_eq!(ILovePeas::PEAPOD_SIZE.unwrap(), 9);
+    assert_eq!(std::mem::size_of::<ILovePeas>(), 16);
+
+    let mut pp = Peapod::new();
+    pp.push(ILovePeas::SnowPea);
+    pp.push(ILovePeas::Edamame(0x9EA90D));
+    pp.push(ILovePeas::GeneticPea {
+        wrinkled: true,
+        yellow: true,
+    });
+
+    for pea in pp {
+        // do something with pea!
+    }
 }
 
-// Yay it works on this megageneric struct!
-#[derive(Phenotype, PhenotypeDebug, Debug)]
-enum Generic<'a, T, U: Debug> {
-    One(&'a T),
-    Two(U, U),
-    Three(*mut *const T),
-    Vec(Vec<T>),
-    HashMap(HashMap<T, U>, [Vec<(T, U)>; 7]),
-    Boo(PhantomData<&'a mut U>),
+#[derive(Phenotype)] // <- this is where the magic happens
+enum ILovePeas {
+    Edamame(usize),
+    SnowPea,
+    GeneticPea { wrinkled: bool, yellow: bool },
 }
