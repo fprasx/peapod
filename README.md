@@ -4,6 +4,14 @@
 pod. It works with any `enum` that implements the `Phenotype` trait, which
 captures the behaviour of each variant.
 
+## Contents
+
+1. [Motivation](#motivation)
+1. [Usage](#Usage)
+1. [Technical](#Tecnical)
+1. [How `Peapod` works](#how-does-it-do-it)
+1. [When not to use `Peapod`](#when-not-to-use-peapod)
+
 ## Motivation
 
 We only have so much memory to work with. Especially in space-constrained

@@ -28,11 +28,11 @@ macro_rules! count_tts {
 ///     A,
 ///     B
 /// }
-/// 
+///
 /// let mut fast = peapod![Test::A, Test::B];
-/// 
+///
 /// // is the same as
-/// 
+///
 /// let mut slow = Peapod::with_capacity(2);
 /// slow.push(Test::A);
 /// slow.push(Test::B);
@@ -274,7 +274,10 @@ where
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.data.len() - self.index, Some(self.data.len() - self.index))
+        (
+            self.data.len() - self.index,
+            Some(self.data.len() - self.index),
+        )
     }
 }
 
@@ -399,8 +402,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use phenotype_macro::Phenotype;
     use core::iter::{DoubleEndedIterator, Iterator};
+    use phenotype_macro::Phenotype;
 
     #[derive(Phenotype, PartialEq, Debug)]
     enum TestData {
@@ -426,7 +429,9 @@ mod tests {
         pp.next();
         assert_eq!(pp.len(), 6);
         assert_eq!(pp.size_hint(), (6, Some(6)));
-        for _ in 0..10 { pp.next(); };
+        for _ in 0..10 {
+            pp.next();
+        }
         assert_eq!(pp.len(), 0);
         assert_eq!(pp.size_hint(), (0, Some(0)));
     }
