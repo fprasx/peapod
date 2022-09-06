@@ -141,7 +141,7 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     quote! {
         #auxiliaries
-        impl #impl_generics phenotype_internal::Phenotype for #ident #ty_generics
+        impl #impl_generics Phenotype for #ident #ty_generics
             #where_clause
         {
             const NUM_VARIANTS: usize = #num_variants;
@@ -435,7 +435,7 @@ pub fn phenotype_debug(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     let discriminant_impl = discriminant_impl(&data);
     let debug_tag_impl = debug_tag_impl(&data);
     quote! {
-        impl #impl_generics phenotype_internal::PhenotypeDebug for #ident #ty_generics
+        impl #impl_generics PhenotypeDebug for #ident #ty_generics
             #where_clause
         {
             #discriminant_impl

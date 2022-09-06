@@ -4,9 +4,8 @@
 
 // Exports :)
 pub use crate::peapod::Peapod;
-pub use phenotype_internal as traits;
-pub use phenotype_macro as macros;
-pub use phenotype_macro::Phenotype;
+pub use phenotype_macro::{Phenotype, PhenotypeDebug};
+pub use phenotype_internal::{Phenotype, PhenotypeDebug};
 
 mod peapod;
 
