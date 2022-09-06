@@ -22,24 +22,7 @@ fn main() {
     pp.push(Holder::Variant);
     pp.push(Holder::Variant);
     pp.push(Holder::Variant);
+    println!("Debug: {pp:?}");
+    println!("Display: {pp}");
     pp.into_iter().next_back();
 }
-
-macro_rules! tests {
-    ($type:ty, $($variant:ident),*) => {
-        $(
-            #[allow(non_snake_case)]
-            mod $variant {
-                use super::*;
-                #[test]
-                fn test() {
-                        let mut pp = peapod::Peapod::new();
-                            pp.push(<$type>::$variant);
-                        pp.pop();
-                        for _ in pp {}
-                }
-            }
-        )*
-    };
-}
-tests! {Holder, Variant}

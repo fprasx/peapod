@@ -79,6 +79,11 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let bits = {
         if data.variants.is_empty() {
             0
+        } else if data.variants.len() == 1 {
+            // This avoids having to check everywhere if T::BITS == 1,
+            // which is easy to forget and can easily cause panics,
+            // for the cheap cost of one bit
+            1
         } else {
             let log = log2(data.variants.len());
             let pow = 2usize.pow(log);

@@ -4,7 +4,6 @@ use bitvec::{field::BitField, prelude::*};
 use core::{
     cmp,
     fmt::{self, Debug, Display},
-    mem::ManuallyDrop,
     ptr,
 };
 use phenotype_internal::Phenotype;
@@ -73,23 +72,12 @@ where
 
     // **Note**: index must be in range
     fn get_tag(&self, index: usize) -> usize {
-        // If T::BITS == 0 there is only one variant, so we just return the first
-        // tag, 0
-        // Also, reading bitvec[0..0] will panic
-        if T::BITS == 0 {
-            0
-        } else {
-            self.tags[index * T::BITS..(index + 1) * T::BITS].load()
-        }
+        self.tags[index * T::BITS..(index + 1) * T::BITS].load()
     }
 
     // **Note**: index must be in range
     fn set_tag(&mut self, index: usize, tag: usize) {
-        // This means there is one variant, so we don't need to store anything.
-        // We'll always return the tag 0 from get_tag
-        if T::BITS != 0 {
-            self.tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
-        }
+        self.tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
     }
 
     /// Append a new element to the end of the collection.
@@ -181,18 +169,11 @@ where
         cmp::min(tag_cap, data_cap)
     }
 
-    fn cleave(self) -> (BitVec, Vec<T::Value>) {
-        let levitating = ManuallyDrop::new(self);
-        unsafe { (ptr::read(&levitating.tags), ptr::read(&levitating.data)) }
-    }
-
     /// Adds `other` to the end of `self`, so the new collection
     /// now contains all the elements of `self` followed by the elements
     /// of `other`.
     pub fn append(&mut self, other: Peapod<T>) {
-        let (mut otags, mut odata) = other.cleave();
-        self.tags.append(&mut otags);
-        self.data.append(&mut odata);
+        self.extend(other.into_iter());
     }
 }
 
@@ -243,12 +224,7 @@ where
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let (tags, data) = self.cleave();
-        IntoIter {
-            tags,
-            data,
-            index: 0,
-        }
+        IntoIter { pp: self, index: 0 }
     }
 }
 
@@ -256,8 +232,7 @@ pub struct IntoIter<T>
 where
     T: Phenotype,
 {
-    tags: BitVec,
-    data: Vec<T::Value>,
+    pp: Peapod<T>,
     index: usize,
 }
 
@@ -268,20 +243,16 @@ where
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.data.len() {
+        if self.index == self.pp.len() {
             None
         } else {
             let elem = Some(<T as Phenotype>::reknit(
-                if T::BITS == 0 {
-                    0
-                } else {
-                    self.tags[self.index * T::BITS..(self.index + 1) * T::BITS].load()
-                },
+                self.pp.get_tag(self.index),
                 // Read a value out of the vector
                 // # Safety
                 // We are reading from a valid ptr (as_ptr), and the offset is
                 // in bounds as we stop iterating once index == len
-                unsafe { ptr::read(self.data.as_ptr().add(self.index)) },
+                unsafe { ptr::read(self.pp.data.as_ptr().add(self.index)) },
             ));
             self.index += 1;
             elem
@@ -290,8 +261,8 @@ where
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (
-            self.data.len() - self.index,
-            Some(self.data.len() - self.index),
+            self.pp.data.len() - self.index,
+            Some(self.pp.data.len() - self.index),
         )
     }
 }
@@ -301,18 +272,14 @@ where
     T: Phenotype,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let len = self.data.len();
+        let len = self.pp.data.len();
+        // We still need to check this as some of the front elements of the peapod
+        // might have been iterated over, but they were not moved out (they are
+        // ptr::read out), so they could still be unsoundly popped out
         if self.index == len {
             None
         } else {
-            // Unwrap is ok as we know self.index < self.data.len so iteration is not over
-            let data = self.data.pop().unwrap();
-            let tag = if T::BITS == 0 {
-                0
-            } else {
-                self.tags[(len - 1) * T::BITS..len * T::BITS].load()
-            };
-            Some(<T as Phenotype>::reknit(tag, data))
+            self.pp.pop()
         }
     }
 }
@@ -385,6 +352,8 @@ where
         // If we can, reserve space ahead of time
         let iter = iter.into_iter();
         if let (_, Some(len)) = iter.size_hint() {
+            self.reserve(len);
+        } else if let (len, None) = iter.size_hint() {
             self.reserve(len);
         }
         for elem in iter {
