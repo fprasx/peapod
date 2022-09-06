@@ -1,27 +1,20 @@
 # Peapod
 
 `Peapod` is a data structure for storing `enum`s super-compactly, like peas in a
-pod. It works with any `enum` that implements the `Phenotype` trait, which
+pod `:)` It works with any `enum` that implements the `Phenotype` trait, which
 captures the behaviour of each variant.
 
 ## Contents
 
-1. [Motivation](#motivation)
 1. [Usage](#Usage)
+1. [Motivation](#motivation)
 1. [Technical](#Tecnical)
 1. [How `Peapod` works](#how-does-it-do-it)
 1. [When not to use `Peapod`](#when-not-to-use-peapod)
 
-## Motivation
-
-We only have so much memory to work with. Especially in space-constrained
-systems, we want to be particularly efficient. `Peapod` provides a way of
-storing `enums` that can dramatically reduce space usage. You can read more
-in-depth about the motivation in [technical](#technical) section.
-
-tl;dr: `Peapod` provides ultra-compact storage for `enum`s!
-
 ## Usage
+
+First, add `peapod == 0.1.6` to your `Cargo.toml`.
 
 You can basically just use `Peapod` like a normal `Vec`. Some functionality is
 impossible though, like iterating over a `Peapod` without consuming it.
@@ -58,6 +51,15 @@ enum ILovePeas {
     GeneticPea { wrinkled: bool, yellow: bool },
 }
 ```
+
+## Motivation
+
+We only have so much memory to work with. Especially in space-constrained
+systems, we want to be particularly efficient. `Peapod` provides a way of
+storing `enums` that can dramatically reduce space usage. You can read more
+in-depth about the motivation in [technical](#technical) section.
+
+tl;dr: `Peapod` provides ultra-compact storage for `enum`s!
 
 ## Technical
 

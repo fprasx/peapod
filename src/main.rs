@@ -24,5 +24,5 @@ fn main() {
     pp.push(Holder::Variant);
     println!("Debug: {pp:?}");
     println!("Display: {pp}");
-    pp.into_iter().next_back();
+    drop(pp.into_iter());
 }
