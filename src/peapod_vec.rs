@@ -73,12 +73,23 @@ where
 
     // **Note**: index must be in range
     fn get_tag(&self, index: usize) -> usize {
-        self.tags[index * T::BITS..(index + 1) * T::BITS].load()
+        // If T::BITS == 0 there is only one variant, so we just return the first
+        // tag, 0
+        // Also, reading bitvec[0..0] will panic
+        if T::BITS == 0 {
+            0
+        } else {
+            self.tags[index * T::BITS..(index + 1) * T::BITS].load()
+        }
     }
 
     // **Note**: index must be in range
     fn set_tag(&mut self, index: usize, tag: usize) {
-        self.tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
+        // This means there is one variant, so we don't need to store anything.
+        // We'll always return the tag 0 from get_tag
+        if T::BITS != 0 {
+            self.tags[index * T::BITS..(index + 1) * T::BITS].store::<usize>(tag);
+        }
     }
 
     /// Append a new element to the end of the collection.
@@ -261,7 +272,11 @@ where
             None
         } else {
             let elem = Some(<T as Phenotype>::reknit(
-                self.tags[self.index * T::BITS..(self.index + 1) * T::BITS].load(),
+                if T::BITS == 0 {
+                    0
+                } else {
+                    self.tags[self.index * T::BITS..(self.index + 1) * T::BITS].load()
+                },
                 // Read a value out of the vector
                 // # Safety
                 // We are reading from a valid ptr (as_ptr), and the offset is
@@ -292,7 +307,11 @@ where
         } else {
             // Unwrap is ok as we know self.index < self.data.len so iteration is not over
             let data = self.data.pop().unwrap();
-            let tag = self.tags[(len - 1) * T::BITS..len * T::BITS].load();
+            let tag = if T::BITS == 0 {
+                0
+            } else {
+                self.tags[(len - 1) * T::BITS..len * T::BITS].load()
+            };
             Some(<T as Phenotype>::reknit(tag, data))
         }
     }
@@ -310,6 +329,15 @@ where
         // implementations too.
         assert_eq!(upper, Some(lower));
         lower
+    }
+}
+
+impl<T> Drop for IntoIter<T>
+where
+    T: Phenotype,
+{
+    fn drop(&mut self) {
+        for _ in self {}
     }
 }
 
@@ -402,6 +430,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::peapod;
     use core::iter::{DoubleEndedIterator, Iterator};
     use phenotype_macro::Phenotype;
 

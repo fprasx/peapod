@@ -3,11 +3,11 @@
 #![no_std]
 
 // Exports :)
-pub use crate::peapod::Peapod;
-pub use phenotype_macro::{Phenotype, PhenotypeDebug};
+pub use crate::peapod_vec::Peapod;
 pub use phenotype_internal::{Phenotype, PhenotypeDebug};
+pub use phenotype_macro::{Phenotype, PhenotypeDebug};
 
-mod peapod;
+mod peapod_vec;
 
 // in the works
 mod array;

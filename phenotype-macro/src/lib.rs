@@ -76,10 +76,6 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let reknit_impl = reknit_impl(&data);
 
-    // We cast as we actually do want to rounding to the nearest int
-    // TODO: not necessarily right
-    // let bits = f32::log2(data.variants.len() as f32) as usize;
-
     let bits = {
         if data.variants.is_empty() {
             0
@@ -126,13 +122,13 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         None => {
             quote!(
                 Some(
-                        // unwrap isn't const
-                        match Self::PEAPOD_SIZE {
-                            Some(size) => size <= ::core::mem::size_of::<#ident>(),
-                            // Unreachable as if there are not generics, PEAPOD_SIZE
-                            // is `Some`
-                            None => unreachable!()
-                        }
+                    // unwrap isn't const
+                    match <Self as Phenotype>::PEAPOD_SIZE {
+                        Some(size) => size <= ::core::mem::size_of::<#ident>(),
+                        // Unreachable as if there are not generics, PEAPOD_SIZE
+                        // is `Some`
+                        None => unreachable!()
+                    }
 
                 )
             )
@@ -206,7 +202,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
 
     let generics = data.generics.split_for_impl().1;
     quote! {
-        fn reknit(tag: usize, value: Self::Value) -> #ident #generics {
+        fn reknit(tag: usize, value: <Self as Phenotype>::Value) -> #ident #generics {
             match tag {
                 #(#arms),*
                 // There should be no other cases, as there are no other variants
@@ -288,7 +284,7 @@ fn cleave_impl(data: &Condensed) -> proc_macro2::TokenStream {
     }
     quote! {
         type Value = #union_ident #generics;
-        fn cleave(self) -> (usize, Self::Value) {
+        fn cleave(self) -> (usize, <Self as Phenotype>::Value) {
             match &*::core::mem::ManuallyDrop::new(self) {
                 #(#arms),*
             }
