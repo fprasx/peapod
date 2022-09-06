@@ -142,7 +142,7 @@ The implementation all happens with the wizardry that is proc-macros.
 `#[derive(Phenotype)]` is the workhorse of this project.
 
 The `#[derive(Phenotype)]` takes a look at your enum and first generates some
-"auxilliary" types like so:
+"auxiliary" types like so:
 
 ```rust
 enum ThreeTypes<T> {

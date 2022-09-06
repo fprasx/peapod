@@ -20,7 +20,7 @@ macro_rules! count_tts {
 
 #[macro_export]
 /// A nice way to generate a `Peapod` from a list of elements. If you're familiar
-/// with the `vec![]` macro, this is the equivalent but for `Peapod`.
+/// with the `vec![]` macro, this is `Peapod`'s equivalent.
 /// ```rust
 /// # use peapod::{Peapod, Phenotype, peapod};
 /// #[derive(Phenotype)]
