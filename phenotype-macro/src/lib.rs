@@ -330,6 +330,7 @@ fn def_auxiliary_struct(
             Some(Auxiliary {
                 ident: struct_name.clone(),
                 tokens: quote! {
+                    #[repr(packed)]
                     struct #struct_name #generics {
                         #(#idents: #types,)*
                     }
@@ -344,7 +345,7 @@ fn def_auxiliary_struct(
             let types = unnamed.iter().map(|field| &field.ty);
             Some(Auxiliary {
                 ident: struct_name.clone(),
-                tokens: quote! { struct #struct_name #generics (#(#types,)*); },
+                tokens: quote! { #[repr(packed)] struct #struct_name #generics (#(#types,)*); },
             })
         }
 
