@@ -4,6 +4,7 @@ use bitvec::{field::BitField, prelude::*};
 use core::{
     cmp,
     fmt::{self, Debug, Display},
+    mem::ManuallyDrop,
     ptr,
 };
 use phenotype_internal::Phenotype;
@@ -119,7 +120,9 @@ where
         // Remove the last tag
         self.tags.truncate((len - 1) * T::BITS);
 
-        Some(Phenotype::reknit(tag, data))
+        // # Safety
+        // The tag matches the data
+        unsafe { Some(Phenotype::reknit(tag, data)) }
     }
 
     /// Returns the number of elements in the collection.
@@ -175,6 +178,19 @@ where
     pub fn append(&mut self, other: Peapod<T>) {
         self.extend(other.into_iter());
     }
+
+    fn cleave(self) -> (BitVec, Vec<T::Value>) {
+        let levitating = ManuallyDrop::new(self);
+        unsafe {
+            (
+                // # Safety
+                // We are reading from a reference,
+                // we have wrapped self in ManuallyDrop to prevent a double-free
+                ptr::read(&levitating.tags),
+                ptr::read(&levitating.data),
+            )
+        }
+    }
 }
 
 impl<T> Drop for Peapod<T>
@@ -224,7 +240,12 @@ where
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        IntoIter { pp: self, index: 0 }
+        let (tags, data) = self.cleave();
+        IntoIter {
+            tags,
+            data,
+            index: 0,
+        }
     }
 }
 
@@ -232,7 +253,8 @@ pub struct IntoIter<T>
 where
     T: Phenotype,
 {
-    pp: Peapod<T>,
+    tags: BitVec,
+    data: Vec<T::Value>,
     index: usize,
 }
 
@@ -243,17 +265,20 @@ where
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.pp.len() {
+        // Are we done iterating?
+        if self.index == self.data.len() {
             None
         } else {
-            let elem = Some(<T as Phenotype>::reknit(
-                self.pp.get_tag(self.index),
+            // # Safety
+            // We are reading the tag that matches the data
+            let elem = unsafe { Some(<T as Phenotype>::reknit(
+                self.tags[self.index * T::BITS..(self.index + 1) * T::BITS].load(),
                 // Read a value out of the vector
                 // # Safety
                 // We are reading from a valid ptr (as_ptr), and the offset is
                 // in bounds as we stop iterating once index == len
-                unsafe { ptr::read(self.pp.data.as_ptr().add(self.index)) },
-            ));
+                ptr::read(self.data.as_ptr().add(self.index)),
+            )) };
             self.index += 1;
             elem
         }
@@ -261,8 +286,8 @@ where
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (
-            self.pp.data.len() - self.index,
-            Some(self.pp.data.len() - self.index),
+            self.data.len() - self.index,
+            Some(self.data.len() - self.index),
         )
     }
 }
@@ -272,15 +297,32 @@ where
     T: Phenotype,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
-        let len = self.pp.data.len();
-        // We still need to check this as some of the front elements of the peapod
-        // might have been iterated over, but they were not moved out (they are
-        // ptr::read out), so they could still be unsoundly popped out
+        let len = self.data.len();
+
+        // Are we done iterating?
         if self.index == len {
             None
         } else {
-            self.pp.pop()
-        }
+            // Reduce self.data's length by one so the last element won't be accessible,
+            // preventing a double-free it were to be read again
+            unsafe {
+                self.data.set_len(len - 1);
+            }
+
+            // # Safety
+            // The tag matches the data
+            unsafe {
+                Some(<T as Phenotype>::reknit(
+                    self.tags[(len - 1) * T::BITS..len * T::BITS].load(),
+                    // Read a value out of the vector
+                    // # Safety
+                    // We are reading from a valid ptr (as_ptr), and the offset is
+                    // in bounds as we stop iterating once index == len
+                    unsafe { ptr::read(self.data.as_ptr().add(len - 1)) },
+                ))
+ 
+            }
+           }
     }
 }
 
@@ -305,6 +347,10 @@ where
 {
     fn drop(&mut self) {
         for _ in self {}
+        // When the drop glue for self drops self.data,
+        // nothing get's dropped as the union fields are wrapped
+        // in ManuallyDrop, so all the dropping happens when we
+        // iterate over self, and we avoid a double-free
     }
 }
 
