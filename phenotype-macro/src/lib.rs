@@ -142,7 +142,7 @@ pub fn phenotype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     quote! {
         #auxiliaries
-        impl #impl_generics Phenotype for #ident #ty_generics
+        unsafe impl #impl_generics Phenotype for #ident #ty_generics
             #where_clause
         {
             const NUM_VARIANTS: usize = #num_variants;
@@ -207,7 +207,7 @@ fn reknit_impl(data: &Condensed) -> TokenStream {
 
     let generics = data.generics.split_for_impl().1;
     quote! {
-        fn reknit(tag: usize, value: <Self as Phenotype>::Value) -> #ident #generics {
+        unsafe fn reknit(tag: usize, value: <Self as Phenotype>::Value) -> #ident #generics {
             match tag {
                 #(#arms),*
                 // There should be no other cases, as there are no other variants

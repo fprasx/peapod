@@ -1,8 +1,13 @@
 // TODO: add examples
 
-/// This trait represents the behaviour of an `enum`/tagged union.
+/// This trait represents the behavior of an `enum`/tagged union.
 /// **Note**: it should only be implemented with `#[derive(Phenotype)]`
-pub trait Phenotype {
+/// # Safety
+/// This trait is marked unsafe because _extreme_ care must be taken to implement
+/// it correctly. In particular, the `reknit` method can cause undefined behavior
+/// if called with invalid inputs. Manual implementation of the trait is heavily
+/// discouraged, but there may be cases (e.g. `const` generics) where it is necessary.
+pub unsafe trait Phenotype {
     /// The number of variants of the enum.
     const NUM_VARIANTS: usize;
 
@@ -34,10 +39,16 @@ pub trait Phenotype {
     /// a tag, and an union representing the data the enum can hold.
     /// If the enum variant doesn't hold data, `None` is returned as
     /// the second tuple element.
+    /// **Note**: if the results of a call to `cleave` are not eventually
+    /// `reknit`ed, the destructor for the `cleave`ed enum will not run. 
+    /// This can cause memory leaks. Types that manage heap memory often
+    /// implement cleanup and deallocation in their `Drop` implementations.
     fn cleave(self) -> (usize, Self::Value);
 
     /// Takes a tag and a value and recombines them into a proper
-    /// instance of an enum variant. Calling this function with incorrect
+    /// instance of an enum variant. 
+    /// # Safety
+    /// Calling this function with incorrect
     /// inputs can result in undefined behavior. The tag must always match
     /// the state that the union is in.
     ///
@@ -64,7 +75,7 @@ pub trait Phenotype {
     ///     let BAD = <UB as Phenotype>::reknit(1, data);
     /// }
     /// ```
-    fn reknit(tag: usize, value: Self::Value) -> Self;
+    unsafe fn reknit(tag: usize, value: Self::Value) -> Self;
 }
 
 /// Some helpful methods for using `Phenotype`

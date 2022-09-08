@@ -1,6 +1,6 @@
 [package]
 name = "peapod"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Felix Prasanna"]
 edition = "2021"
 keywords = ["data-structures", "compact", "enums", "space-efficient", "vector"]
@@ -13,8 +13,8 @@ repository = "https://github.com/fprasx/peapod"
 homepage = "https://github.com/fprasx/peapod"
 
 [dependencies]
-phenotype-internal = { version = "0.1.0", path = "phenotype-internal" }
-phenotype-macro = { version = "0.1.2", path = "phenotype-macro" }
+phenotype-internal = { version = "0.2.0", path = "phenotype-internal" }
+phenotype-macro = { version = "0.1.3", path = "phenotype-macro" }
 
 [dependencies.bitvec]
 version = "1"

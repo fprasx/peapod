@@ -1,7 +1,7 @@
 # Peapod
 
-`Peapod` is a data structure for storing `enum`s super-compactly, like peas in a
-pod `:)` It works with any `enum` that implements the `Phenotype` trait, which
+`Peapod` is a data structure for storing enums super-compactly, like peas in a
+pod `:)` It works with any enum that implements the `Phenotype` trait, which
 captures the behaviour of each variant.
 
 ## Contents
@@ -19,7 +19,7 @@ First, add `peapod == 0.1.6` to your `Cargo.toml`.
 You can basically just use `Peapod` like a normal `Vec`. Some functionality is
 impossible though, like iterating over a `Peapod` without consuming it.
 
-To make an `enum` suitable for `Peapod` storage, stick a `#[derive(Phenotype)]`
+To make an enum suitable for `Peapod` storage, stick a `#[derive(Phenotype)]`
 on it.
 
 ```rust
@@ -59,14 +59,14 @@ systems, we want to be particularly efficient. `Peapod` provides a way of
 storing `enums` that can dramatically reduce space usage. You can read more
 in-depth about the motivation in [technical](#technical) section.
 
-tl;dr: `Peapod` provides ultra-compact storage for `enum`s!
+tl;dr: `Peapod` provides ultra-compact storage for enums!
 
 ## Technical
 
-`enum`s (also known as tagged unions) are represented in memory by a tag
-(integer) and a `union`. The tag specifies how the bits of the `union` are
-interpreted. For example, a tag of 0 might mean "read the `union` as
-`Result::Ok(_)`", while a tag of 1 would mean "read the `union` as
+enums (also known as tagged unions) are represented in memory by a tag
+(integer) and a union. The tag specifies how the bits of the union are
+interpreted. For example, a tag of 0 might mean "read the union as
+`Result::Ok(_)`", while a tag of 1 would mean "read the union as
 `Result::Err(_)`".
 
 Because of alignment reasons, the compiler has to lay out enums so that the tag
@@ -82,13 +82,13 @@ enum Two {
 // mem::size_of::<Two> == 16
 ```
 
-Since the size of each variant is 8 bytes, and the size of the `enum` is 16
+Since the size of each variant is 8 bytes, and the size of the enum is 16
 bytes, **8 bytes** are being used for the tag! 63 bits are being wasted! We can
 do better.
 
-`Peapod` works by "cleaving" an enum into tag and `union`. Tags are stored
+`Peapod` works by "cleaving" an enum into tag and union. Tags are stored
 together in a `bitvec` type so that no space is wasted due to alignment. All the
-data from the `enum`s (in `union` form) is also stored together.
+data from the enums (in union form) is also stored together.
 
 This drawing illustrates the previous example:
 
@@ -132,13 +132,13 @@ fn cleave(self) -> (usize, Self::Value)
 fn reknit(tag: usize, value: Self::Value) -> Self
 ```
 
-The type `Value` is some type that can hold all the data from each `enum`
+The type `Value` is some type that can hold all the data from each enum
 variant. It should be a union.
 
-`cleave` tags a concrete instance of an `enum` and splits it into a tag (this
+`cleave` tags a concrete instance of an enum and splits it into a tag (this
 tag is internal to `Phenotype`, unrelated to the compiler's) and a
 `Self::Value`. `reknit` does the opposite and takes a tag and a `Self::Value`,
-and reconstitutes it into an `enum` variant.
+and reconstitutes it into an enum variant.
 
 The implementation all happens with the wizardry that is proc-macros.
 `#[derive(Phenotype)]` is the workhorse of this project.
@@ -204,11 +204,11 @@ fn cleave(self) -> (usize, Self::Value) {
 }
 ```
 
-All we're doing is `match`ing on the `enum` variant and reading out each field
+All we're doing is `match`ing on the enum variant and reading out each field
 into the correct auxiliary struct.
 
-`cleave` does the opposite. Based on the tag, it reads the `union` and generates
-and `enum` variant from the data contained in the auxiliary `struct`.
+`cleave` does the opposite. Based on the tag, it reads the union and generates
+and enum variant from the data contained in the auxiliary `struct`.
 
 ```rust
 fn reknit(tag: usize, value: Self::Value) -> ThreeTypes<T> {
