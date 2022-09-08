@@ -40,13 +40,13 @@ pub unsafe trait Phenotype {
     /// If the enum variant doesn't hold data, `None` is returned as
     /// the second tuple element.
     /// **Note**: if the results of a call to `cleave` are not eventually
-    /// `reknit`ed, the destructor for the `cleave`ed enum will not run. 
+    /// `reknit`ed, the destructor for the `cleave`ed enum will not run.
     /// This can cause memory leaks. Types that manage heap memory often
     /// implement cleanup and deallocation in their `Drop` implementations.
     fn cleave(self) -> (usize, Self::Value);
 
     /// Takes a tag and a value and recombines them into a proper
-    /// instance of an enum variant. 
+    /// instance of an enum variant.
     /// # Safety
     /// Calling this function with incorrect
     /// inputs can result in undefined behavior. The tag must always match
