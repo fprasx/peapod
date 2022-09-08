@@ -271,14 +271,16 @@ where
         } else {
             // # Safety
             // We are reading the tag that matches the data
-            let elem = unsafe { Some(<T as Phenotype>::reknit(
-                self.tags[self.index * T::BITS..(self.index + 1) * T::BITS].load(),
-                // Read a value out of the vector
-                // # Safety
-                // We are reading from a valid ptr (as_ptr), and the offset is
-                // in bounds as we stop iterating once index == len
-                ptr::read(self.data.as_ptr().add(self.index)),
-            )) };
+            let elem = unsafe {
+                Some(<T as Phenotype>::reknit(
+                    self.tags[self.index * T::BITS..(self.index + 1) * T::BITS].load(),
+                    // Read a value out of the vector
+                    // # Safety
+                    // We are reading from a valid ptr (as_ptr), and the offset is
+                    // in bounds as we stop iterating once index == len
+                    ptr::read(self.data.as_ptr().add(self.index)),
+                ))
+            };
             self.index += 1;
             elem
         }
@@ -318,11 +320,10 @@ where
                     // # Safety
                     // We are reading from a valid ptr (as_ptr), and the offset is
                     // in bounds as we stop iterating once index == len
-                    unsafe { ptr::read(self.data.as_ptr().add(len - 1)) },
+                    ptr::read(self.data.as_ptr().add(len - 1)),
                 ))
- 
             }
-           }
+        }
     }
 }
 
