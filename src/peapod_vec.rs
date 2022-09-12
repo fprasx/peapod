@@ -82,21 +82,41 @@ where
     }
 
     /// Append a new element to the end of the collection.
+    /// 
+    /// ## Panics
+    /// Panics if the underlying `bitvec` or `Vec` panics.
+    /// The underlying [`Vec`](https://doc.rust-lang.org/stable/std/vec/struct.Vec.html#panics-7) 
+    /// will panic if its allocation exceeds
+    /// `isize::MAX` bytes. The underlying `bitvec` will panic
+    /// if the maximum tag capacity is exceeded.
+    /// On 32-bit systems, maximum tag capacity is `0x1fff_ffff/T::BITS` tags.
+    /// On 64-bit systems, maximum tag capacity is `0x1fff_ffff_ffff_ffff/T::BITS` tags.
     pub fn push(&mut self, t: T) {
         let pos = self.data.len();
 
         let (tag, data) = t.cleave();
 
-        self.data.push(data);
-
         // Naively pushing seems to be faster than something like
         // self.tags
         //     .extend_from_bitslice(&BitView::view_bits::<Lsb0>(&[tag])[0..T::BITS]);
-        // TODO: try bitshifty stuff?
-        // like push((tags >> 1) & 1), push((tags >> 2) & 1), push((tags >> 3) & 1)
         for _ in 0..T::BITS {
             self.tags.push(false)
         }
+
+        // https://github.com/fprasx/peapod/issues/2
+        // We have to push the data second because pushing to
+        // self.tags will panic if capacity is exceeded.
+        // If this panic is caught and we already pushed a 
+        // value to self.data, but not self.tags, there
+        // will be an untagged value on the end of self.data.
+        //
+        // This is still not good as we will have some cruft
+        // on the end of self.tags, but because we always use
+        // self.data to get self's length, and we always use
+        // get/set instead of push/pop to modify self.tags,
+        // the correct tag and data should still always match
+        // up.
+        self.data.push(data);
 
         self.set_tag(pos, tag);
     }
@@ -160,7 +180,12 @@ where
     /// Shortens the collection so it only contains the first `len` elements.
     /// **Note**: this does not affect its allocated capacity.
     pub fn truncate(&mut self, len: usize) {
-        self.tags.truncate(len * T::BITS);
+        // https://github.com/fprasx/peapod/issues/2
+        // len  * T::BITS can overflow so we saturate at the top,
+        // If it overflows this means len > max-capacity of the bitvec, 
+        // so it would be impossible to reach a state with that many elements.
+        // Therefore saturating at the top won't remove anything - which is correct
+        self.tags.truncate(usize::saturating_mul(len, T::BITS));
         self.data.truncate(len);
     }
 

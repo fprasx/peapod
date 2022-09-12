@@ -1,6 +1,6 @@
 [package]
 name = "peapod"
-version = "0.1.8"
+version = "0.1.9"
 authors = ["Felix Prasanna"]
 edition = "2021"
 keywords = ["data-structures", "compact", "enums", "space-efficient", "vector"]
