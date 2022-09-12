@@ -14,7 +14,7 @@ the `Phenotype` trait, which captures the behaviour of each variant.
 
 ## Usage
 
-First, add `peapod == 0.1.6` to your `Cargo.toml`.
+First, add `peapod == 0.1.8` to your `Cargo.toml`.
 
 You can almost use `Peapod` like a normal `Vec`. Not all functionality
 is possible, notably, treating `Peapod` as a slice. This is due to the internal
